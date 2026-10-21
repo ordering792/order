@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+.next/
+out/
+build/
+dist/
+.turbo/
+
+# Environment files (secrets) — .env.example ကိုတော့ commit လုပ်တယ်
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+.pnpm-debug.log*
+
+# Test output
+coverage/
+.nyc_output/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# Local misc
+.vercel
+.turbo
+*.tsbuildinfo
+next-env.d.ts

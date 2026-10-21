@@ -1,0 +1,40 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "seed:products": "node scripts/seed-products.js",
+    "test": "node scripts/run-jest.js --coverage --runInBand"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.8",
+    "express": "^5.3.0",
+    "express-rate-limit": "^8.2.1",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.11.2",
+    "socket.io": "^4.8.4",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "jest": "^30.2.0",
+    "mongodb-memory-server": "^9.5.0",
+    "nodemon": "^3.1.14",
+    "supertest": "^7.1.4"
+  },
+  "jest": {
+    "globalSetup": "<rootDir>/tests/globalSetup.js",
+    "globalTeardown": "<rootDir>/tests/globalTeardown.js",
+    "testEnvironment": "node",
+    "testTimeout": 30000
+  }
+}
