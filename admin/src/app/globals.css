@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* src/app/globals.css */
+
+/* စာမျက်နှာတစ်ခုလုံးရဲ့ Scroll Bar ကို ဖျောက်ခြင်း */
+body {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+body::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
+/* ခင်ဗျားသုံးထားတဲ့ Custom Scrollbar လေးအတွက် */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #ff782d;
+  border-radius: 10px;
+}
+/* စာမျက်နှာတစ်ခုလုံးရဲ့ Scroll Bar ကို ဖျောက်ခြင်း */
+html,
+body {
+  -ms-overflow-style: none; /* IE and Edge အတွက် */
+  scrollbar-width: none; /* Firefox အတွက် */
+}
+
+/* Chrome, Safari, Opera အတွက် Scroll Bar ဖျောက်ခြင်း */
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none;
+}
+
+/* ဖုန်း Screen Container ရဲ့ Scroll Bar ကို ဖျောက်ခြင်း */
+.custom-scrollbar,
+.overflow-y-auto {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.custom-scrollbar::-webkit-scrollbar,
+.overflow-y-auto::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
