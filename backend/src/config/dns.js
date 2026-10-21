@@ -4,7 +4,8 @@ const { promisify } = require("util");
 const resolveSrv = promisify(dns.resolveSrv);
 const resolveTxt = promisify(dns.resolveTxt);
 
-const PUBLIC_DNS = ["1.1.1.1", "8.8.8.8"];
+// မှတ်သားမှု: ဒီ network မှာ 1.1.1.1 က block ဖြစ်နေလို့ Google DNS (8.8.8.8) ကို ဦးစားပြုတယ်။
+const PUBLIC_DNS = ["8.8.8.8", "9.9.9.9"];
 
 function configureDns() {
   try {
