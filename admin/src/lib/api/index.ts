@@ -245,8 +245,10 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  adminListUserTasks: (userId: string) =>
-    request<{ tasks: ApiTask[] }>(`/tasks/user/${userId}`),
+  adminListUserTasks: (userId: string, planId?: string) =>
+    request<{ tasks: ApiTask[] }>(
+      `/tasks/user/${userId}${planId ? `?planId=${planId}` : ""}`,
+    ),
 
   adminGeneratePlan: (id: string, depositTransactionId: string) =>
     request<{ plan: ApiPlan }>(`/orders/plans/${id}/generate`, {

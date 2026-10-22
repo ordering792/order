@@ -37,7 +37,7 @@ const orderPlanSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
-      unique: true,
+      // User တစ်ယောက်က plan အများရှိနိုင်တယ် (round ၂၊ ၃ …) — အရင် plan ပြီးတဲ့အခါမှ အသစ်ဖန်တီးလို့။
       index: true,
     },
 

@@ -50,13 +50,26 @@ async function assertPlanReadable(plan, actor) {
 async function createPlan({ userId, totalOrders, luckyPositions }, actor) {
   const user = await assertTargetUser(userId, actor);
 
-  const existingPlan = await OrderPlan.exists({ userId: user._id });
+  // Plan အသစ် ဖန်တီးခွင့် — အရင် plan က "completed" ဖြစ်ပြီးမှသာ (round ၂၊ ၃ …)။
+  // မပြီးတဲ့ plan ရှိနေရင် ထပ်ဖန်တီးမရ။
+  const activePlan = await OrderPlan.findOne({
+    userId: user._id,
+    status: { $ne: "completed" },
+  });
 
-  if (existingPlan) {
+  if (activePlan) {
     throw httpError(409, "User already has an order plan");
   }
 
-  const existingTasks = await Task.exists({ userId: user._id });
+  const activePlanIds = await OrderPlan.find({
+    userId: user._id,
+    status: { $ne: "completed" },
+  }).distinct("_id");
+
+  const existingTasks = await Task.exists({
+    userId: user._id,
+    $or: [{ orderPlanId: { $in: activePlanIds } }, { orderPlanId: null }],
+  });
 
   if (existingTasks) {
     throw httpError(409, "User already has tasks");

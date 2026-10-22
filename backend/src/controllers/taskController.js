@@ -20,7 +20,6 @@ exports.userTasks = asyncHandler(async (req, res) => {
   if (!mongoose.isValidObjectId(userId)) {
     return res.status(400).json({ message: "Invalid user ID" });
   }
-
   const user = await User.findById(userId);
 
   if (!user) {
@@ -34,7 +33,12 @@ exports.userTasks = asyncHandler(async (req, res) => {
     return res.status(403).json({ message: "Forbidden" });
   }
 
-  const tasks = await Task.find({ userId }).sort({ orderNumber: 1 });
+  const tasks = await Task.find({
+    userId,
+    ...(req.query.planId && mongoose.isValidObjectId(req.query.planId)
+      ? { orderPlanId: req.query.planId }
+      : {}),
+  }).sort({ orderNumber: 1 });
 
   res.json({ tasks });
 });

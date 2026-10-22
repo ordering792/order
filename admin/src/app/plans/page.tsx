@@ -168,7 +168,7 @@ export default function AdminPlansPage() {
     setTasks([]);
 
     try {
-      const res = await api.adminListUserTasks(plan.userId);
+      const res = await api.adminListUserTasks(plan.userId, plan._id);
       setTasks(res.tasks);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed");

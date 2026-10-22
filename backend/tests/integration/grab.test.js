@@ -386,6 +386,58 @@ describe("Grab / matching flow", () => {
       expect(summary.remainingCount).toBe(totalOrders);
     }  });
 
+  it("allows a new plan once the previous one is completed", async () => {
+    const admin = await createUser("admin");
+    const user = await createUser();
+    await apiSeedProducts(10);
+
+    // round 1
+    const plan1 = await apiCreatePlan(admin, user, 3);
+    const deposit1 = await apiDeposit(user, "1000.00");
+    const accepted1 = await apiAccept(admin, deposit1._id);
+    const gen1 = await apiGenerate(admin, plan1._id, accepted1);
+    expect(gen1.status).toBe(201);
+
+    // a second plan is blocked while round 1 is still open
+    const blocked = await request(app)
+      .post("/api/orders/plans")
+      .set("Authorization", `Bearer ${makeToken(admin)}`)
+      .send({ userId: user._id.toString(), totalOrders: 3 });
+    expect(blocked.status).toBe(409);
+    expect(blocked.body.message).toMatch(/already has an order plan/i);
+
+    // complete every order of round 1
+    for (let orderNumber = 1; orderNumber <= 3; orderNumber += 1) {
+      const task = await Task.findOne({ userId: user._id, orderNumber });
+      await request(app)
+        .post(`/api/tasks/match`)
+        .set("Authorization", `Bearer ${makeToken(user)}`)
+        .send({});
+      await request(app)
+        .post(`/api/tasks/${task._id}/submit`)
+        .set("Authorization", `Bearer ${makeToken(user)}`)
+        .send({});
+      const done = await request(app)
+        .post(`/api/tasks/complete/${task._id}`)
+        .set("Authorization", `Bearer ${makeToken(user)}`)
+        .send({});
+      expect(done.status).toBe(200);
+    }
+
+    const finished = await OrderPlan.findById(plan1._id);
+    expect(finished.status).toBe("completed");
+
+    // round 2 is allowed now
+    const plan2 = await request(app)
+      .post("/api/orders/plans")
+      .set("Authorization", `Bearer ${makeToken(admin)}`)
+      .send({ userId: user._id.toString(), totalOrders: 3 });
+    expect(plan2.status).toBe(201);
+
+    // the old tasks stay, the new plan has none yet
+    expect(await Task.countDocuments({ userId: user._id })).toBe(3);
+  });
+
   it("cannot match without a plan", async () => {
     const user = await createUser();
 
