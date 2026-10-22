@@ -8,6 +8,7 @@ jest.mock("../../src/socket", () => ({
   getIO: jest.fn(),
   emitToConversation: jest.fn(),
   emitToAdmins: jest.fn(),
+  emitToUser: jest.fn(),
   isUserOnline: jest.fn(() => false),
   isGuestOnline: jest.fn(() => false),
   onlineUsers: new Map(),
@@ -71,6 +72,8 @@ describe("Task endpoints", () => {
       await Task.create({
         userId: user._id,
         orderNumber: 1,
+        status: "assigned",
+        assignedAt: new Date(),
         productName: "Test Product",
         price: "100.00",
         commission: "10.00",
@@ -157,6 +160,8 @@ describe("Task endpoints", () => {
       const task = await Task.create({
         userId: targetUser._id,
         orderNumber: 1,
+        status: "assigned",
+        assignedAt: new Date(),
         productName: "Complete me",
         price: "100.00",
         commission: "15.00",
@@ -184,6 +189,8 @@ describe("Task endpoints", () => {
       const task = await Task.create({
         userId: targetUser._id,
         orderNumber: 1,
+        status: "assigned",
+        assignedAt: new Date(),
         productName: "Test",
         price: "50.00",
         commission: "5.00",
@@ -204,6 +211,8 @@ describe("Task endpoints", () => {
       const task = await Task.create({
         userId: user._id,
         orderNumber: 1,
+        status: "assigned",
+        assignedAt: new Date(),
         productName: "Self complete",
         price: "100.00",
         commission: "12.50",
@@ -236,6 +245,8 @@ describe("Task endpoints", () => {
       const task = await Task.create({
         userId: user._id,
         orderNumber: 1,
+        status: "assigned",
+        assignedAt: new Date(),
         productName: "Owner completes",
         price: "50.00",
         commission: "5.00",
@@ -257,6 +268,8 @@ describe("Task endpoints", () => {
       const task = await Task.create({
         userId: user._id,
         orderNumber: 1,
+        status: "assigned",
+        assignedAt: new Date(),
         productName: "Realtime",
         price: "100.00",
         commission: "10.00",
@@ -293,6 +306,8 @@ describe("Task endpoints", () => {
       const task = await Task.create({
         userId: user._id,
         orderNumber: 3,
+        status: "assigned",
+        assignedAt: new Date(),
         productName: "Lucky product",
         price: "200.00",
         commission: "15.00",
@@ -333,6 +348,8 @@ describe("Task endpoints", () => {
       const task = await Task.create({
         userId: user._id,
         orderNumber: 4,
+        status: "assigned",
+        assignedAt: new Date(),
         productName: "Lucky no config",
         price: "200.00",
         commission: "15.00",
@@ -346,7 +363,7 @@ describe("Task endpoints", () => {
       expect(res.status).toBe(409);
 
       const updated = await Task.findById(task._id);
-      expect(updated.status).toBe("pending");
+      expect(updated.status).toBe("assigned");
     });
 
     it("returns 400 when balance is insufficient for deposit", async () => {
@@ -357,6 +374,8 @@ describe("Task endpoints", () => {
       const task = await Task.create({
         userId: user._id,
         orderNumber: 5,
+        status: "assigned",
+        assignedAt: new Date(),
         productName: "Lucky poor",
         price: "200.00",
         commission: "15.00",
@@ -377,7 +396,7 @@ describe("Task endpoints", () => {
       expect(res.status).toBe(400);
 
       const updated = await Task.findById(task._id);
-      expect(updated.status).toBe("pending");
+      expect(updated.status).toBe("assigned");
 
       const fresh = await User.findById(user._id);
       expect(parseFloat(fresh.balance.toString())).toBeCloseTo(3, 2);
@@ -394,6 +413,8 @@ describe("Task endpoints", () => {
       const task = await Task.create({
         userId: user._id,
         orderNumber: 1,
+        status: "assigned",
+        assignedAt: new Date(),
         productName: "Referred task",
         price: "100.00",
         commission: "20.00",
@@ -434,6 +455,8 @@ describe("Task endpoints", () => {
       const task = await Task.create({
         userId: user._id,
         orderNumber: 1,
+        status: "assigned",
+        assignedAt: new Date(),
         productName: "Master task",
         price: "100.00",
         commission: "20.00",

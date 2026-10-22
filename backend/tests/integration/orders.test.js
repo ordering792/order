@@ -8,6 +8,7 @@ jest.mock("../../src/socket", () => ({
   getIO: jest.fn(),
   emitToConversation: jest.fn(),
   emitToAdmins: jest.fn(),
+  emitToUser: jest.fn(),
   isUserOnline: jest.fn(() => false),
   isGuestOnline: jest.fn(() => false),
   onlineUsers: new Map(),
@@ -509,9 +510,16 @@ async function planTasks(userId) {
 }
 
 async function completeTask(user, taskId) {
+  // Real flow: order ကို match (assign) လုပ်ပြီးမှ complete ခေါ်နိုင်တယ်။
+  await Task.updateOne(
+    { _id: taskId },
+    { $set: { status: "assigned", assignedAt: new Date() } },
+  );
+
   return request(app)
     .post(`/api/tasks/complete/${taskId}`)
-    .set("Authorization", `Bearer ${makeToken(user)}`);
+    .set("Authorization", `Bearer ${makeToken(user)}`)
+    .send({});
 }
 
 describe("Lucky order auto product selection", () => {

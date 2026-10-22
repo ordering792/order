@@ -176,7 +176,7 @@ async function generateOrders({ planId, depositTransactionId }, actor) {
             price: decimal(priceCents),
             commission: luckyPosition.luckyCommission,
             isLuckyOrder: true,
-            status: "pending",
+            status: "available",
           });
 
           continue;
@@ -207,7 +207,7 @@ async function generateOrders({ planId, depositTransactionId }, actor) {
           price: decimal(picked.priceCents),
           commission: decimal(commissionCents(picked.priceCents)),
           isLuckyOrder: false,
-          status: "pending",
+          status: "available",
         });
       }
 

@@ -79,8 +79,34 @@ const taskSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["pending", "completed"],
-      default: "pending",
+      enum: ["available", "assigned", "completed"],
+      default: "available",
+    },
+
+    // Match လုပ်တဲ့အချိန် (order ကို user အတွက် reserve လုပ်တာ)
+    assignedAt: {
+      type: Date,
+      default: null,
+    },
+
+    // User က "Submit Order" နိုင်တဲ့အချိန်
+    submittedAt: {
+      type: Date,
+      default: null,
+    },
+
+    // Product rating (1-5) + feedback comment
+    rating: {
+      type: Number,
+      default: null,
+      min: 1,
+      max: 5,
+    },
+
+    feedback: {
+      type: String,
+      default: null,
+      maxlength: 1000,
     },
 
     completedAt: {

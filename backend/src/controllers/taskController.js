@@ -127,7 +127,7 @@ exports.generate = asyncHandler(async (req, res) => {
           price: decimal(toCents(task.price)),
           commission: decimal(toCents(task.commission)),
           isLuckyOrder: task.isLuckyOrder,
-          status: "pending",
+          status: "available",
         })),
         { session },
       );

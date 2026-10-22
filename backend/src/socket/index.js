@@ -29,9 +29,17 @@ function authenticate(socket, next) {
 }
 
 function setupSocket(httpServer) {
+  const allowedOrigins = (process.env.CLIENT_ORIGIN || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
   const io = new Server(httpServer, {
     cors: {
-      origin: process.env.CLIENT_ORIGIN || false,
+      origin:
+        allowedOrigins.length > 0
+          ? allowedOrigins
+          : process.env.CLIENT_ORIGIN || false,
       methods: ["GET", "POST"],
     },
     path: "/socket.io",
@@ -59,6 +67,8 @@ function setupSocket(httpServer) {
     // Track online status
     if (userId) {
       onlineUsers.set(String(userId), { socketId: socket.id, role });
+      // ကိုယ့် order events (match / submit / complete) ကို real-time လက်ခံဖို့
+      socket.join(`user:${String(userId)}`);
     }
     if (guestId) {
       onlineGuests.set(guestId, socket.id);
@@ -242,6 +252,14 @@ function emitToAdmins(event, payload) {
   }
 }
 
+// လက်တစ်ယောက်ကိုသာ event ပို့ခြင်း (order counts real-time update အတွက်)
+function emitToUser(userId, event, payload) {
+  const io = global.__IO__;
+  if (io) {
+    io.to(`user:${String(userId)}`).emit(event, payload);
+  }
+}
+
 function isUserOnline(userId) {
   return onlineUsers.has(String(userId));
 }
@@ -255,6 +273,7 @@ module.exports = {
   getIO,
   emitToConversation,
   emitToAdmins,
+  emitToUser,
   isUserOnline,
   isGuestOnline,
   onlineUsers,

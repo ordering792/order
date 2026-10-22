@@ -41,7 +41,7 @@ export interface ApiTask {
   description?: string;
   price: string;
   commission: MoneyValue;
-  status: "pending" | "completed";
+  status: "available" | "assigned" | "completed";
   isLuckyOrder?: boolean;
   completedAt?: string | null;
 }
@@ -88,6 +88,28 @@ export interface ApiAdminUser {
   ownerId?: string | null;
   language?: string;
   createdAt?: string;
+}
+
+export interface GrabOrder {
+  id: string;
+  orderNumber: number;
+  orderId: string;
+  productName: string;
+  productImage: string | null;
+  description: string;
+  category: string;
+  code: string;
+  price: string;
+  profit: string;
+  requireDeposit: string;
+  paidDeposit: string;
+  isLuckyOrder: boolean;
+  totalAmount: string;
+  status: "available" | "assigned" | "completed";
+  assignedAt: string | null;
+  submittedAt: string | null;
+  rating: number | null;
+  feedback: string | null;
 }
 
 export interface ApiAdminStats {

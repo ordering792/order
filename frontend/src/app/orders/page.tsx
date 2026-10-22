@@ -21,21 +21,25 @@ export default function OrdersPage() {
   const [isLangModalOpen, setIsLangModalOpen] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState(getStoredLang);
   const [tasks, setTasks] = useState<ApiTask[]>([]);
-  const [plan, setPlan] = useState<ApiPlan | null>(null);
+  const [plan, setPlan] = useState<{
+    _id: string;
+    totalOrders: number;
+    completedCount: number;
+    status: string;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [completingId, setCompletingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState("");
 
   const load = () => {
     setLoading(true);
-    Promise.all([
-      api.myTasks().then((res) => res.tasks).catch(() => []),
-      api.myPlan().then((res) => res.plan).catch(() => null),
-    ])
-      .then(([taskList, planData]) => {
-        setTasks(taskList);
-        setPlan(planData);
+    api
+      .myOrders()
+      .then((res) => {
+        setTasks(res.tasks);
+        setPlan(res.plan);
       })
+      .catch(() => setTasks([]))
       .finally(() => setLoading(false));
   };
 
@@ -44,7 +48,8 @@ export default function OrdersPage() {
     load();
   }, [user]);
 
-  const completedCount = plan?.completedCount ?? tasks.filter((t) => t.status === "completed").length;
+  const completedCount =
+    plan?.completedCount ?? tasks.filter((t) => t.status === "completed").length;
   const totalOrders = plan?.totalOrders ?? tasks.length;
   const progressPercent =
     totalOrders > 0 ? Math.min(100, Math.round((completedCount / totalOrders) * 100)) : 0;
@@ -70,7 +75,7 @@ export default function OrdersPage() {
   const filteredTasks = tasks.filter((task) => {
     if (filter === "all") return true;
     if (filter === "complete") return task.status === "completed";
-    return task.status === "pending";
+    return task.status === "assigned";
   });
 
   return (
@@ -196,7 +201,7 @@ export default function OrdersPage() {
                   </div>
                 </div>
 
-                {task.status === "pending" && (
+                {task.status === "assigned" && (
                   <button
                     onClick={() => completeOrder(task)}
                     disabled={completingId === task._id}

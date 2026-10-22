@@ -8,6 +8,7 @@ jest.mock("../../src/socket", () => ({
   getIO: jest.fn(),
   emitToConversation: jest.fn(),
   emitToAdmins: jest.fn(),
+  emitToUser: jest.fn(),
   isUserOnline: jest.fn(() => false),
   isGuestOnline: jest.fn(() => false),
   onlineUsers: new Map(),

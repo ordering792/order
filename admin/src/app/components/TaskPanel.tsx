@@ -86,11 +86,13 @@ export default function TaskPanel({
                     >
                       {task.status === "completed"
                         ? t("admin.status.accepted")
-                        : t("admin.status.pending")}
+                        : task.status === "assigned"
+                          ? t("admin.status.pending")
+                          : t("admin.status.draft")}
                     </span>
                   </td>
                   <td className="px-4 py-2">
-                    {task.status === "pending" && (
+                        {task.status === "assigned" && (
                       <button
                         onClick={() => onComplete(task)}
                         disabled={busyTaskId === task._id}

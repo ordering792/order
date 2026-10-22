@@ -1,57 +1,126 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { 
-  ChevronLeft, Plus, Diamond, Search, X, Trophy, Zap, 
-  AlertCircle, Star, Home, ClipboardList, Headphones, User 
+import { useRouter } from "next/navigation";
+import {
+  ChevronLeft,
+  Plus,
+  Diamond,
+  Search,
+  X,
+  Trophy,
+  Zap,
+  AlertCircle,
+  Star,
+  Home,
+  ClipboardList,
+  Headphones,
+  User,
 } from "lucide-react";
+import { api, GrabOrder } from "../../lib/api";
+import { getSocket } from "../../lib/socket";
+import { useAuth } from "../../lib/auth";
 
-const userData = {
-  balance: 1451.23,
-  totalCommission: 1201.23,
-  freezeBalance: 0.00,
-  totalOrderNumber: 40,
+interface GrabSummary {
+  balance: string;
+  totalCommission: string;
+  freezeBalance: string;
+  totalOrderNumber: number;
+  vipLevel: string;
+  commissionRate: string;
+  completedCount: number;
+  remainingCount: number;
+  undoneCount: number;
+  activeOrder: GrabOrder | null;
+}
+
+const EMPTY_SUMMARY: GrabSummary = {
+  balance: "0.00",
+  totalCommission: "0.00",
+  freezeBalance: "0.00",
+  totalOrderNumber: 0,
   vipLevel: "FREE VIP",
-  commissionRate: "0.30%",
-  completedCount: 40,
+  commissionRate: "0.50%",
+  completedCount: 0,
   remainingCount: 0,
   undoneCount: 0,
+  activeOrder: null,
 };
 
-const dummyProduct = {
-  id: 1,
-  orderId: "ORD-2024-001",
-  name: "Premium Wireless Noise-Cancelling Headphones",
-  description: "Experience crystal-clear sound with our latest active noise cancellation technology. Up to 30 hours of battery life for all-day listening.",
-  image: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400&q=80",
-  price: 50.00,
-  profit: 15.00,
-  requireDeposit: 0,
-  paidDeposit: 0,
-};
+const money = (value: string | number) =>
+  Number(value || 0).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 
 export default function GrabPage() {
+  const router = useRouter();
+  const { user } = useAuth();
+  const [summary, setSummary] = useState<GrabSummary>(EMPTY_SUMMARY);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [matchingStatus] = useState("Searching for available products...");
-  const [activeProduct, setActiveProduct] = useState<typeof dummyProduct | null>(null);
-  const [isLuckyOrder, setIsLuckyOrder] = useState(false);
-  
-  const startMatching = () => {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activeProduct, setActiveProduct] = useState<GrabOrder | null>(null);
+  const [needsDeposit, setNeedsDeposit] = useState(false);
+  const [shortBy, setShortBy] = useState("0.00");
+  const [rating, setRating] = useState(0);
+  const [feedback, setFeedback] = useState("");
+  const [error, setError] = useState("");
+
+  const loadSummary = useCallback(() => {
+    api
+      .grabSummary()
+      .then((res) => setSummary(res.summary))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    loadSummary();
+  }, [user, loadSummary]);
+
+  // Real-time: order match / complete ဖြစ်တဲ့အခါ counters ကို update လုပ်မယ်
+  useEffect(() => {
+    if (!user) return;
+
+    const socket = getSocket();
+    if (!socket) return;
+
+    const refresh = () => loadSummary();
+
+    socket.on("order:completed", refresh);
+    socket.on("order:submitted", refresh);
+    socket.on("connect", refresh);
+
+    return () => {
+      socket.off("order:completed", refresh);
+      socket.off("order:submitted", refresh);
+      socket.off("connect", refresh);
+    };
+  }, [user, loadSummary]);
+
+  const startMatching = async () => {
+    setError("");
     setIsModalOpen(true);
     setIsLoading(true);
     setActiveProduct(null);
+    setRating(0);
+    setFeedback("");
 
-    setTimeout(() => {
+    try {
+      const res = await api.matchOrder();
+      setActiveProduct(res.order);
+      setNeedsDeposit(res.needsDeposit);
+      setShortBy(res.shortBy);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not match an order right now",
+      );
+      setIsModalOpen(false);
+    } finally {
       setIsLoading(false);
-      const isLucky = Math.random() > 0.5;
-      setIsLuckyOrder(isLucky);
-      setActiveProduct({
-        ...dummyProduct,
-        requireDeposit: isLucky ? 100.00 : 0,
-      });
-    }, 1500);
+    }
   };
 
   const closeModal = () => {
@@ -59,12 +128,29 @@ export default function GrabPage() {
     setActiveProduct(null);
   };
 
-  const handleSubmitOrder = () => {
-    alert("Order Submitted Successfully! (Simulation)");
-    closeModal();
+  const handleSubmitOrder = async () => {
+    if (!activeProduct) return;
+
+    setError("");
+    setIsSubmitting(true);
+
+    try {
+      await api.submitOrder(activeProduct.id, {
+        rating: rating || undefined,
+        feedback: feedback.trim() || undefined,
+      });
+      closeModal();
+      router.push("/orders");
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not submit this order",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const isDepositRequired = activeProduct && activeProduct.requireDeposit > 0;
+  const isDepositRequired = Boolean(activeProduct && needsDeposit);
 
   return (
     <div className="bg-[#1e293b] flex justify-center items-center min-h-screen m-0 p-0 overflow-hidden">
@@ -79,12 +165,12 @@ export default function GrabPage() {
         </div>
 
         <div className="flex-1 overflow-y-auto w-full relative custom-scrollbar p-4 space-y-4 pb-24">
-          
+
           <div className="bg-white rounded-2xl p-4 shadow-sm border border-orange-100 flex justify-between items-center relative">
             <div>
               <div className="text-2xl font-black text-[#ff6600] flex items-center">
                 <span className="text-base mr-0.5">$</span>
-                {userData.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                {money(summary.balance)}
               </div>
               <span className="text-xs font-semibold text-gray-400">Balance</span>
             </div>
@@ -99,24 +185,24 @@ export default function GrabPage() {
                 <Diamond size={16} className="text-amber-300" />
               </div>
               <div>
-                <h3 className="font-bold text-base tracking-wide">{userData.vipLevel}</h3>
+                <h3 className="font-bold text-base tracking-wide">{summary.vipLevel}</h3>
                 <p className="text-[11px] text-orange-100 font-medium">
-                  Commission Rate: {userData.commissionRate} | {userData.completedCount} Tasks
+                  Commission Rate: {summary.commissionRate} | {summary.totalOrderNumber} Tasks
                 </p>
               </div>
             </div>
 
             <div className="grid grid-cols-3 text-center pt-2 border-t border-white/20">
               <div>
-                <div className="text-xl font-black">{userData.completedCount}</div>
+                <div className="text-xl font-black">{summary.completedCount}</div>
                 <span className="text-[10px] text-orange-100 leading-tight block mt-0.5">Order complete!</span>
               </div>
               <div>
-                <div className="text-xl font-black">{userData.remainingCount}</div>
+                <div className="text-xl font-black">{summary.remainingCount}</div>
                 <span className="text-[10px] text-orange-100 leading-tight block mt-0.5">Remaining</span>
               </div>
               <div>
-                <div className="text-xl font-black">{userData.undoneCount}</div>
+                <div className="text-xl font-black">{summary.undoneCount}</div>
                 <span className="text-[10px] text-orange-100 leading-tight block mt-0.5">Undone</span>
               </div>
             </div>
@@ -126,43 +212,50 @@ export default function GrabPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <div className="text-base font-black text-gray-800">
-                  $ {userData.totalCommission.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  $ {money(summary.totalCommission)}
                 </div>
                 <span className="text-xs font-semibold text-gray-400">Total Commission</span>
               </div>
               <div>
                 <div className="text-base font-black text-gray-800">
-                  $ {userData.freezeBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  $ {money(summary.freezeBalance)}
                 </div>
                 <span className="text-xs font-semibold text-gray-400">Freeze Balance</span>
               </div>
             </div>
             <div className="border-t border-gray-100 pt-3 grid grid-cols-2 gap-4">
               <div>
-                <div className="text-base font-black text-gray-800">{userData.totalOrderNumber}</div>
+                <div className="text-base font-black text-gray-800">{summary.totalOrderNumber}</div>
                 <span className="text-xs font-semibold text-gray-400">Order number</span>
               </div>
               <div>
                 <div className="text-base font-black text-gray-800">
-                  $ {userData.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  $ {money(summary.balance)}
                 </div>
                 <span className="text-xs font-semibold text-gray-400">My balance</span>
               </div>
             </div>
           </div>
 
+          {error && (
+            <p className="rounded-xl bg-rose-50 border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-600">
+              {error}
+            </p>
+          )}
+
           <div className="pt-2">
-            <button 
+            <button
               onClick={startMatching}
-              className="w-full bg-gradient-to-r from-[#ff782d] to-[#ff5100] text-white py-4 rounded-full font-bold text-base shadow-lg shadow-orange-500/30 hover:opacity-95 transition active:scale-[0.98]"
+              disabled={isLoading}
+              className="w-full bg-gradient-to-r from-[#ff782d] to-[#ff5100] text-white py-4 rounded-full font-bold text-base shadow-lg shadow-orange-500/30 hover:opacity-95 transition active:scale-[0.98] disabled:opacity-60"
             >
-              Begin Matching
+              {isLoading ? "Matching..." : "Begin Matching"}
             </button>
           </div>
 
           <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-2">
             <h4 className="font-bold text-gray-800 text-xs flex items-center">
-              <AlertCircle size={14} className="text-[#ff6600] mr-1.5" /> 
+              <AlertCircle size={14} className="text-[#ff6600] mr-1.5" />
               Take a closer look at system rules:
             </h4>
             <p className="text-[11px] text-gray-500 leading-relaxed">
@@ -181,7 +274,7 @@ export default function GrabPage() {
             <ClipboardList size={22} />
             <span className="text-[9px] font-medium mt-1">Orders</span>
           </Link>
-          
+
           <Link href="/grab" className="flex flex-col items-center relative -top-4 group">
             <div className="w-12 h-12 bg-gradient-to-tr from-[#ff782d] to-[#ff5100] rounded-full flex items-center justify-center border-4 border-white shadow-md text-white transition transform group-hover:scale-105 active:scale-95 overflow-hidden">
               <img src="/images/11321466.gif" alt="Icon" className="w-full h-full object-contain" />
@@ -202,7 +295,7 @@ export default function GrabPage() {
 
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 transition-opacity duration-300">
-          
+
           {isLoading && (
             <div className="bg-white w-full max-w-[300px] rounded-3xl p-6 flex flex-col items-center text-center space-y-4 shadow-2xl">
               <div className="relative w-16 h-16 flex items-center justify-center">
@@ -211,18 +304,18 @@ export default function GrabPage() {
               </div>
               <div>
                 <h3 className="font-bold text-gray-800 text-base">Matching Order...</h3>
-                <p className="text-xs text-gray-400 mt-1">{matchingStatus}</p>
+                <p className="text-xs text-gray-400 mt-1">Searching for available products...</p>
               </div>
             </div>
           )}
 
           {!isLoading && activeProduct && (
             <div className="bg-white w-full max-w-[380px] max-h-[90vh] rounded-3xl p-5 flex flex-col space-y-3 shadow-2xl overflow-y-auto custom-scrollbar">
-              
+
               <div className="flex justify-between items-center border-b pb-2">
                 <div className="flex items-center space-x-2">
                   <h3 className="font-bold text-gray-800 text-sm">Order Detail</h3>
-                  {isLuckyOrder && (
+                  {activeProduct.isLuckyOrder && (
                     <span className="bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full shadow-sm flex items-center gap-1">
                       <Zap size={10} className="text-amber-200" /> Lucky Order
                     </span>
@@ -235,16 +328,23 @@ export default function GrabPage() {
 
               <div className="flex items-start space-x-3 bg-gray-50/50 p-2.5 rounded-2xl border border-gray-100">
                 <div className="w-24 h-24 bg-gray-900 rounded-xl overflow-hidden shadow-sm relative shrink-0 flex items-center justify-center border border-gray-200">
-                  <img src={activeProduct.image} alt="Product" className="w-full h-full object-contain" />
-                  {isLuckyOrder && (
+                  {activeProduct.productImage ? (
+                    <img src={activeProduct.productImage} alt={activeProduct.productName} className="w-full h-full object-contain" />
+                  ) : (
+                    <span className="text-[10px] text-gray-500">No image</span>
+                  )}
+                  {activeProduct.isLuckyOrder && (
                     <div className="absolute top-1 right-1 bg-black/70 backdrop-blur-md text-amber-300 px-1.5 py-0.5 rounded text-[8px] font-bold border border-amber-400/30 flex items-center gap-0.5">
                       <Trophy size={8} /> Lucky
                     </div>
                   )}
                 </div>
                 <div className="flex-1 min-w-0 space-y-1">
-                  <h4 className="font-bold text-gray-800 text-xs line-clamp-2 leading-snug">{activeProduct.name}</h4>
+                  <h4 className="font-bold text-gray-800 text-xs line-clamp-2 leading-snug">{activeProduct.productName}</h4>
                   <p className="text-[10px] text-gray-500 line-clamp-4 leading-relaxed">{activeProduct.description}</p>
+                  {activeProduct.code && (
+                    <p className="text-[10px] font-mono text-gray-400">{activeProduct.code}</p>
+                  )}
                 </div>
               </div>
 
@@ -255,19 +355,19 @@ export default function GrabPage() {
                 </div>
                 <div className="flex justify-between text-gray-600">
                   <span>Price:</span>
-                  <span className="font-semibold text-gray-800">$ {activeProduct.price.toFixed(2)}</span>
+                  <span className="font-semibold text-gray-800">$ {money(activeProduct.price)}</span>
                 </div>
                 <div className="flex justify-between text-gray-600">
                   <span>Deposit Funds:</span>
-                  <span className="font-semibold text-rose-500">$ {activeProduct.requireDeposit.toFixed(2)}</span>
+                  <span className="font-semibold text-rose-500">$ {money(activeProduct.requireDeposit)}</span>
                 </div>
                 <div className="flex justify-between text-gray-600">
                   <span>Estimated Profit:</span>
-                  <span className="font-bold text-emerald-600">+ $ {activeProduct.profit.toFixed(2)}</span>
+                  <span className="font-bold text-emerald-600">+ $ {money(activeProduct.profit)}</span>
                 </div>
                 <div className="border-t border-orange-200 pt-1.5 flex justify-between font-black text-gray-800 text-sm">
                   <span>Total Amount:</span>
-                  <span className="text-rose-500">$ {(activeProduct.price + activeProduct.requireDeposit + activeProduct.profit).toFixed(2)}</span>
+                  <span className="text-rose-500">$ {money(activeProduct.totalAmount)}</span>
                 </div>
               </div>
 
@@ -278,49 +378,63 @@ export default function GrabPage() {
                     <span>Insufficient Balance!</span>
                   </div>
                   <p className="text-[11px]">
-                    Please deposit ${activeProduct.requireDeposit.toFixed(2)} more for this Lucky Order.
+                    Please deposit ${money(shortBy)} more for this Lucky Order.
                   </p>
                 </div>
               )}
 
               <div className="flex flex-col items-center space-y-1 py-1">
                 <span className="text-[11px] font-semibold text-gray-500">Rate this product</span>
-                <div className="flex space-x-1 text-amber-400">
+                <div className="flex space-x-1">
                   {[1, 2, 3, 4, 5].map((star) => (
-                    <Star key={star} size={20} fill="currentColor" />
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => setRating(star)}
+                      className="text-amber-400 transition"
+                    >
+                      <Star
+                        size={20}
+                        fill={star <= rating ? "currentColor" : "none"}
+                        className={star <= rating ? "" : "text-gray-300"}
+                      />
+                    </button>
                   ))}
                 </div>
               </div>
 
               <div className="space-y-1">
                 <span className="text-[11px] font-semibold text-gray-500">Feedback / Comments</span>
-                <textarea 
-                  placeholder="Write your review here..." 
-                  rows={2} 
+                <textarea
+                  value={feedback}
+                  onChange={(e) => setFeedback(e.target.value)}
+                  placeholder="Write your review here..."
+                  rows={2}
                   className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs text-gray-700 outline-none focus:border-[#ff6600] resize-none"
                 ></textarea>
               </div>
 
               <div className="flex space-x-2 pt-1">
-                <button 
-                  onClick={closeModal} 
+                <button
+                  onClick={closeModal}
                   className="w-1/2 bg-gray-100 text-gray-600 py-3 rounded-xl font-bold text-xs hover:bg-gray-200 transition"
                 >
                   Cancel
                 </button>
                 {isDepositRequired ? (
-                  <Link 
-                    href="/deposit" 
+                  <Link
+                    href="/deposit"
                     className="w-1/2 bg-gradient-to-r from-rose-500 to-red-600 text-white py-3 rounded-xl font-bold text-xs shadow-md hover:opacity-95 transition text-center"
                   >
                     Deposit Now
                   </Link>
                 ) : (
-                  <button 
+                  <button
                     onClick={handleSubmitOrder}
-                    className="w-1/2 bg-gradient-to-r from-[#ff782d] to-[#ff5100] text-white py-3 rounded-xl font-bold text-xs shadow-md hover:opacity-95 transition"
+                    disabled={isSubmitting}
+                    className="w-1/2 bg-gradient-to-r from-[#ff782d] to-[#ff5100] text-white py-3 rounded-xl font-bold text-xs shadow-md hover:opacity-95 transition disabled:opacity-60"
                   >
-                    Submit Order
+                    {isSubmitting ? "Submitting..." : "Submit Order"}
                   </button>
                 )}
               </div>

@@ -7,6 +7,7 @@ import type {
   ApiTask,
   ApiTransaction,
   ApiUser,
+  GrabOrder,
   MoneyValue,
 } from "./types";
 
@@ -108,6 +109,48 @@ export const api = {
 
   // ---- Orders / tasks ----
   myTasks: () => request<{ tasks: ApiTask[] }>("/tasks/my-tasks"),
+
+  // ---- Grab / matching flow ----
+  grabSummary: () =>
+    request<{
+      summary: {
+        balance: string;
+        totalCommission: string;
+        freezeBalance: string;
+        totalOrderNumber: number;
+        vipLevel: string;
+        commissionRate: string;
+        completedCount: number;
+        remainingCount: number;
+        undoneCount: number;
+        activeOrder: GrabOrder | null;
+      };
+    }>("/tasks/summary"),
+
+  matchOrder: () =>
+    request<{
+      order: GrabOrder;
+      balance: string;
+      needsDeposit: boolean;
+      shortBy: string;
+    }>("/tasks/match", { method: "POST", body: JSON.stringify({}) }),
+
+  submitOrder: (id: string, input: { rating?: number; feedback?: string }) =>
+    request<{ task: ApiTask }>(`/tasks/${id}/submit`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+
+  myOrders: () =>
+    request<{
+      tasks: ApiTask[];
+      plan: {
+        _id: string;
+        totalOrders: number;
+        completedCount: number;
+        status: string;
+      } | null;
+    }>("/tasks/orders"),
 
   completeTask: (id: string) =>
     request<{ message: string; task: ApiTask }>(

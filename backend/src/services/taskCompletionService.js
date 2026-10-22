@@ -6,7 +6,7 @@ const LuckyOrderConfig = require("../models/LuckyOrderConfig");
 const OrderPlan = require("../models/OrderPlan");
 const Transaction = require("../models/Transaction");
 const { toCents, fromCents, decimal } = require("../utils/money");
-const { emitToAdmins } = require("../socket");
+const { emitToAdmins, emitToUser } = require("../socket");
 
 const DEFAULT_INVITATION_CODE =
   process.env.DEFAULT_INVITATION_CODE || "MASTER2024";
@@ -56,11 +56,11 @@ async function completeTask(taskId, actor) {
     await session.withTransaction(async () => {
       const task = await Task.findOne({
         _id: taskId,
-        status: "pending",
+        status: "assigned",
       }).session(session);
 
       if (!task) {
-        throw httpError(409, "Task not found or already completed");
+        throw httpError(409, "Task not found, not matched yet, or already completed");
       }
 
       if (actor.role === "user" && !task.userId.equals(actor._id)) {
@@ -262,6 +262,14 @@ async function completeTask(taskId, actor) {
       orderNumber: out.task.orderNumber,
       commission: fromCents(out.commission),
       luckyDeposit: fromCents(out.deposit),
+    });
+
+    // ကိုယ်ပိုင်ကို real-time (grab page counters)
+    emitToUser(out.userId, "order:completed", {
+      taskId: String(out.task._id),
+      orderNumber: out.task.orderNumber,
+      commission: fromCents(out.commission),
+      balance: fromCents(out.balance),
     });
 
     emitToAdmins("balance:updated", {
