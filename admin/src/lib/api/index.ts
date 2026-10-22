@@ -247,7 +247,7 @@ export const api = {
 
   adminListUserTasks: (userId: string, planId?: string) =>
     request<{ tasks: ApiTask[] }>(
-      `/tasks/user/${userId}${planId ? `?planId=${planId}` : ""}`,
+      `/tasks/user/${userId}${planId ? `?planId=${encodeURIComponent(planId)}` : ""}`,
     ),
 
   adminGeneratePlan: (id: string, depositTransactionId: string) =>

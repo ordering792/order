@@ -61,14 +61,9 @@ async function createPlan({ userId, totalOrders, luckyPositions }, actor) {
     throw httpError(409, "User already has an order plan");
   }
 
-  const activePlanIds = await OrderPlan.find({
-    userId: user._id,
-    status: { $ne: "completed" },
-  }).distinct("_id");
-
   const existingTasks = await Task.exists({
     userId: user._id,
-    $or: [{ orderPlanId: { $in: activePlanIds } }, { orderPlanId: null }],
+    orderPlanId: null,
   });
 
   if (existingTasks) {
@@ -183,7 +178,10 @@ function serializePlan(plan) {
 }
 
 async function getMyPlan(userId) {
-  return OrderPlan.findOne({ userId });
+  return (
+    (await OrderPlan.findOne({ userId, status: { $ne: 'completed' } }).sort({ createdAt: -1 })) ||
+    (await OrderPlan.findOne({ userId }).sort({ createdAt: -1 }))
+  );
 }
 
 async function deletePlan(planId, actor) {

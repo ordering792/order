@@ -55,7 +55,10 @@ function serializeGrabTask(task, luckyPosition) {
 }
 
 async function getUserPlan(userId) {
-  return OrderPlan.findOne({ userId });
+  return (
+    (await OrderPlan.findOne({ userId, status: { $ne: 'completed' } }).sort({ createdAt: -1 })) ||
+    (await OrderPlan.findOne({ userId }).sort({ createdAt: -1 }))
+  );
 }
 
 async function getLuckyPosition(plan, orderNumber) {

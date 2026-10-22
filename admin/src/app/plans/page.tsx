@@ -194,7 +194,7 @@ export default function AdminPlansPage() {
         ),
       );
 
-      const res = await api.adminListUserTasks(taskPlan?.userId ?? "");
+      const res = await api.adminListUserTasks(taskPlan?.userId ?? "", taskPlan?._id);
       setTasks(res.tasks);
       load();
     } catch (err) {
