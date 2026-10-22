@@ -66,21 +66,27 @@ async function getLuckyPosition(plan, orderNumber) {
   );
 }
 
+// "available" = match လုပ်ရန် ကျန်ရှိ order။
+// Legacy "pending" (status ပြောင်းမီး ဖန်တီးထားတဲ့ task) ကိုလည်း အလုပ်လုပ်မယ်။
+const AVAILABLE_STATUSES = ["available", "pending"];
+
 async function countSummary(userId) {
   const plan = await getUserPlan(userId);
   const totalOrders = plan?.totalOrders ?? 0;
 
-  const [completedCount, undoneCount] = await Promise.all([
+  const [completedCount, undoneCount, availableCount] = await Promise.all([
     Task.countDocuments({ userId, status: "completed" }),
     Task.countDocuments({ userId, status: "assigned" }),
+    Task.countDocuments({ userId, status: { $in: AVAILABLE_STATUSES } }),
   ]);
 
-  const remainingCount = Math.max(
-    0,
-    totalOrders - completedCount - undoneCount,
-  );
-
-  return { plan, totalOrders, completedCount, undoneCount, remainingCount };
+  return {
+    plan,
+    totalOrders,
+    completedCount,
+    undoneCount,
+    remainingCount: availableCount,
+  };
 }
 
 // /grab page အတွက် summary (balance, counters, active order)
@@ -149,13 +155,13 @@ exports.match = asyncHandler(async (req, res) => {
   if (!task) {
     task = await Task.findOne({
       userId: req.user._id,
-      status: "available",
+      status: { $in: AVAILABLE_STATUSES },
     })
       .sort({ orderNumber: 1 })
       .then((found) =>
         found
           ? Task.findOneAndUpdate(
-              { _id: found._id, status: "available" },
+              { _id: found._id, status: { $in: AVAILABLE_STATUSES } },
               { $set: { status: "assigned", assignedAt: new Date() } },
               { returnDocument: "after" },
             )

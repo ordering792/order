@@ -273,6 +273,31 @@ describe("Grab / matching flow", () => {
     expect(res.body.shortBy).toBe("100.00");
   });
 
+  it("matches legacy tasks that still have the old 'pending' status", async () => {
+    const user = await createUser();
+    await seedPlan(user, { totalOrders: 5 });
+
+    // အချိန်ကျေး status ပြောင်းမှီး ဖန်တီးထားတဲ့ task တွေ
+    await Task.updateMany(
+      { userId: user._id },
+      { $set: { status: "pending" } },
+    );
+
+    const res = await request(app)
+      .post("/api/tasks/match")
+      .set("Authorization", `Bearer ${makeToken(user)}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.order.orderNumber).toBe(1);
+
+    const summary = await request(app)
+      .get("/api/tasks/summary")
+      .set("Authorization", `Bearer ${makeToken(user)}`);
+
+    expect(summary.body.summary.remainingCount).toBe(4);
+    expect(summary.body.summary.undoneCount).toBe(1);
+  });
+
   it("cannot match without a plan", async () => {
     const user = await createUser();
 
