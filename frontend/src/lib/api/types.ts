@@ -42,6 +42,10 @@ export interface ApiTask {
   price: string;
   commission: MoneyValue;
   status: "available" | "assigned" | "completed";
+  assignedAt?: string | null;
+  submittedAt?: string | null;
+  rating?: number | null;
+  feedback?: string | null;
   isLuckyOrder?: boolean;
   completedAt?: string | null;
 }

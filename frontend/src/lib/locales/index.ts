@@ -6,12 +6,16 @@ import { ordersDict } from "./orders";
 import { supportDict } from "./support";
 import { sharedDict } from "./shared";
 import { depositDict } from "./deposit";
+import { grabDict } from "./grab";
+import { notificationsDict } from "./notifications";
 
 const features: Dict[] = [
   authDict,
   mainDict,
   walletDict,
   depositDict,
+  grabDict,
+  notificationsDict,
   ordersDict,
   supportDict,
   sharedDict,

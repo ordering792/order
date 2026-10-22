@@ -21,6 +21,7 @@ import {
 import { api, GrabOrder } from "../../lib/api";
 import { getSocket } from "../../lib/socket";
 import { useAuth } from "../../lib/auth";
+import { useT } from "../../lib/i18n";
 
 interface GrabSummary {
   balance: string;
@@ -57,6 +58,7 @@ const money = (value: string | number) =>
 export default function GrabPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const t = useT();
   const [summary, setSummary] = useState<GrabSummary>(EMPTY_SUMMARY);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -115,7 +117,7 @@ export default function GrabPage() {
       setShortBy(res.shortBy);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Could not match an order right now",
+        err instanceof Error ? err.message : t("grab.matchFailed"),
       );
       setIsModalOpen(false);
     } finally {
@@ -143,7 +145,7 @@ export default function GrabPage() {
       router.push("/orders");
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Could not submit this order",
+        err instanceof Error ? err.message : t("grab.submitFailed"),
       );
     } finally {
       setIsSubmitting(false);
@@ -160,7 +162,7 @@ export default function GrabPage() {
           <Link href="/" className="text-white flex items-center justify-center">
             <ChevronLeft size={30} />
           </Link>
-          <span className="font-bold text-lg tracking-wider">Shop Order</span>
+          <span className="font-bold text-lg tracking-wider">{t("grab.title")}</span>
           <div className="w-8"></div>
         </div>
 
@@ -172,7 +174,7 @@ export default function GrabPage() {
                 <span className="text-base mr-0.5">$</span>
                 {money(summary.balance)}
               </div>
-              <span className="text-xs font-semibold text-gray-400">Balance</span>
+              <span className="text-xs font-semibold text-gray-400">{t("grab.balance")}</span>
             </div>
             <Link href="/deposit" className="w-10 h-10 bg-gradient-to-tr from-[#ff782d] to-[#ff5100] rounded-full flex items-center justify-center text-white shadow-md hover:scale-105 transition">
               <Plus size={20} className="font-bold" />
@@ -187,7 +189,7 @@ export default function GrabPage() {
               <div>
                 <h3 className="font-bold text-base tracking-wide">{summary.vipLevel}</h3>
                 <p className="text-[11px] text-orange-100 font-medium">
-                  Commission Rate: {summary.commissionRate} | {summary.totalOrderNumber} Tasks
+                  {t("grab.commissionRate", { rate: summary.commissionRate, count: summary.totalOrderNumber })}
                 </p>
               </div>
             </div>
@@ -195,15 +197,15 @@ export default function GrabPage() {
             <div className="grid grid-cols-3 text-center pt-2 border-t border-white/20">
               <div>
                 <div className="text-xl font-black">{summary.completedCount}</div>
-                <span className="text-[10px] text-orange-100 leading-tight block mt-0.5">Order complete!</span>
+                <span className="text-[10px] text-orange-100 leading-tight block mt-0.5">{t("grab.orderComplete")}</span>
               </div>
               <div>
                 <div className="text-xl font-black">{summary.remainingCount}</div>
-                <span className="text-[10px] text-orange-100 leading-tight block mt-0.5">Remaining</span>
+                <span className="text-[10px] text-orange-100 leading-tight block mt-0.5">{t("grab.remaining")}</span>
               </div>
               <div>
                 <div className="text-xl font-black">{summary.undoneCount}</div>
-                <span className="text-[10px] text-orange-100 leading-tight block mt-0.5">Undone</span>
+                <span className="text-[10px] text-orange-100 leading-tight block mt-0.5">{t("grab.undone")}</span>
               </div>
             </div>
           </div>
@@ -214,25 +216,25 @@ export default function GrabPage() {
                 <div className="text-base font-black text-gray-800">
                   $ {money(summary.totalCommission)}
                 </div>
-                <span className="text-xs font-semibold text-gray-400">Total Commission</span>
+                <span className="text-xs font-semibold text-gray-400">{t("grab.totalCommission")}</span>
               </div>
               <div>
                 <div className="text-base font-black text-gray-800">
                   $ {money(summary.freezeBalance)}
                 </div>
-                <span className="text-xs font-semibold text-gray-400">Freeze Balance</span>
+                <span className="text-xs font-semibold text-gray-400">{t("grab.freezeBalance")}</span>
               </div>
             </div>
             <div className="border-t border-gray-100 pt-3 grid grid-cols-2 gap-4">
               <div>
                 <div className="text-base font-black text-gray-800">{summary.totalOrderNumber}</div>
-                <span className="text-xs font-semibold text-gray-400">Order number</span>
+                <span className="text-xs font-semibold text-gray-400">{t("grab.orderNumber")}</span>
               </div>
               <div>
                 <div className="text-base font-black text-gray-800">
                   $ {money(summary.balance)}
                 </div>
-                <span className="text-xs font-semibold text-gray-400">My balance</span>
+                <span className="text-xs font-semibold text-gray-400">{t("grab.myBalance")}</span>
               </div>
             </div>
           </div>
@@ -249,17 +251,17 @@ export default function GrabPage() {
               disabled={isLoading}
               className="w-full bg-gradient-to-r from-[#ff782d] to-[#ff5100] text-white py-4 rounded-full font-bold text-base shadow-lg shadow-orange-500/30 hover:opacity-95 transition active:scale-[0.98] disabled:opacity-60"
             >
-              {isLoading ? "Matching..." : "Begin Matching"}
+              {isLoading ? t("grab.matching") : t("grab.beginMatching")}
             </button>
           </div>
 
           <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-2">
             <h4 className="font-bold text-gray-800 text-xs flex items-center">
               <AlertCircle size={14} className="text-[#ff6600] mr-1.5" />
-              Take a closer look at system rules:
+              {t("grab.rulesTitle")}
             </h4>
             <p className="text-[11px] text-gray-500 leading-relaxed">
-              Welcome to our platform! Users can seamlessly grab high-value orders and earn attractive daily commissions based on their respective VIP status levels and account tiers. To ensure smooth operations and uninterrupted daily tasks, please verify that your account balance, transaction limits, and credit ratings consistently meet the minimum platform requirements. Our automated system monitors daily matching accuracy to protect user funds, maximize profits, and prevent fraudulent activities. For any assistance regarding VIP upgrades, withdrawals, or task completion rules, please reach out to our 24/7 customer support team. Trade responsibly and maximize your daily earning potential today!
+              {t("grab.rulesBody")}
             </p>
           </div>
 
@@ -303,8 +305,8 @@ export default function GrabPage() {
                 <Search size={24} className="text-[#ff6600] z-10" />
               </div>
               <div>
-                <h3 className="font-bold text-gray-800 text-base">Matching Order...</h3>
-                <p className="text-xs text-gray-400 mt-1">Searching for available products...</p>
+                <h3 className="font-bold text-gray-800 text-base">{t("grab.matching")}</h3>
+                <p className="text-xs text-gray-400 mt-1">{t("grab.matchingStatus")}</p>
               </div>
             </div>
           )}
@@ -314,10 +316,10 @@ export default function GrabPage() {
 
               <div className="flex justify-between items-center border-b pb-2">
                 <div className="flex items-center space-x-2">
-                  <h3 className="font-bold text-gray-800 text-sm">Order Detail</h3>
+                  <h3 className="font-bold text-gray-800 text-sm">{t("grab.orderDetail")}</h3>
                   {activeProduct.isLuckyOrder && (
                     <span className="bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full shadow-sm flex items-center gap-1">
-                      <Zap size={10} className="text-amber-200" /> Lucky Order
+                      <Zap size={10} className="text-amber-200" /> {t("grab.luckyOrder")}
                     </span>
                   )}
                 </div>
@@ -331,11 +333,11 @@ export default function GrabPage() {
                   {activeProduct.productImage ? (
                     <img src={activeProduct.productImage} alt={activeProduct.productName} className="w-full h-full object-contain" />
                   ) : (
-                    <span className="text-[10px] text-gray-500">No image</span>
+                    <span className="text-[10px] text-gray-500">{t("grab.noImage")}</span>
                   )}
                   {activeProduct.isLuckyOrder && (
                     <div className="absolute top-1 right-1 bg-black/70 backdrop-blur-md text-amber-300 px-1.5 py-0.5 rounded text-[8px] font-bold border border-amber-400/30 flex items-center gap-0.5">
-                      <Trophy size={8} /> Lucky
+                      <Trophy size={8} /> {t("grab.lucky")}
                     </div>
                   )}
                 </div>
@@ -350,23 +352,23 @@ export default function GrabPage() {
 
               <div className="bg-orange-50/60 border border-orange-100 p-3 rounded-2xl space-y-1.5 text-xs">
                 <div className="flex justify-between text-gray-600 border-b border-orange-200/60 pb-1.5 mb-1">
-                  <span>Order ID:</span>
+                  <span>{t("grab.orderId")}:</span>
                   <span className="font-bold text-orange-600 font-mono">{activeProduct.orderId}</span>
                 </div>
                 <div className="flex justify-between text-gray-600">
-                  <span>Price:</span>
+                  <span>{t("grab.price")}:</span>
                   <span className="font-semibold text-gray-800">$ {money(activeProduct.price)}</span>
                 </div>
                 <div className="flex justify-between text-gray-600">
-                  <span>Deposit Funds:</span>
+                  <span>{t("grab.depositFunds")}:</span>
                   <span className="font-semibold text-rose-500">$ {money(activeProduct.requireDeposit)}</span>
                 </div>
                 <div className="flex justify-between text-gray-600">
-                  <span>Estimated Profit:</span>
+                  <span>{t("grab.estimatedProfit")}:</span>
                   <span className="font-bold text-emerald-600">+ $ {money(activeProduct.profit)}</span>
                 </div>
                 <div className="border-t border-orange-200 pt-1.5 flex justify-between font-black text-gray-800 text-sm">
-                  <span>Total Amount:</span>
+                  <span>{t("grab.totalAmount")}:</span>
                   <span className="text-rose-500">$ {money(activeProduct.totalAmount)}</span>
                 </div>
               </div>
@@ -375,16 +377,16 @@ export default function GrabPage() {
                 <div className="bg-rose-50 border border-rose-200 p-3 rounded-xl text-xs text-rose-600 space-y-1">
                   <div className="font-bold flex items-center gap-1">
                     <AlertCircle size={14} />
-                    <span>Insufficient Balance!</span>
+                    <span>{t("grab.insufficientBalance")}</span>
                   </div>
                   <p className="text-[11px]">
-                    Please deposit ${money(shortBy)} more for this Lucky Order.
+                    {t("grab.depositMore", { amount: money(shortBy) })}
                   </p>
                 </div>
               )}
 
               <div className="flex flex-col items-center space-y-1 py-1">
-                <span className="text-[11px] font-semibold text-gray-500">Rate this product</span>
+                <span className="text-[11px] font-semibold text-gray-500">{t("grab.rateProduct")}</span>
                 <div className="flex space-x-1">
                   {[1, 2, 3, 4, 5].map((star) => (
                     <button
@@ -404,11 +406,11 @@ export default function GrabPage() {
               </div>
 
               <div className="space-y-1">
-                <span className="text-[11px] font-semibold text-gray-500">Feedback / Comments</span>
+                <span className="text-[11px] font-semibold text-gray-500">{t("grab.feedback")}</span>
                 <textarea
                   value={feedback}
                   onChange={(e) => setFeedback(e.target.value)}
-                  placeholder="Write your review here..."
+                  placeholder={t("grab.writeReview")}
                   rows={2}
                   className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs text-gray-700 outline-none focus:border-[#ff6600] resize-none"
                 ></textarea>
@@ -419,14 +421,14 @@ export default function GrabPage() {
                   onClick={closeModal}
                   className="w-1/2 bg-gray-100 text-gray-600 py-3 rounded-xl font-bold text-xs hover:bg-gray-200 transition"
                 >
-                  Cancel
+                  {t("grab.cancel")}
                 </button>
                 {isDepositRequired ? (
                   <Link
                     href="/deposit"
                     className="w-1/2 bg-gradient-to-r from-rose-500 to-red-600 text-white py-3 rounded-xl font-bold text-xs shadow-md hover:opacity-95 transition text-center"
                   >
-                    Deposit Now
+                    {t("grab.depositNow")}
                   </Link>
                 ) : (
                   <button
@@ -434,7 +436,7 @@ export default function GrabPage() {
                     disabled={isSubmitting}
                     className="w-1/2 bg-gradient-to-r from-[#ff782d] to-[#ff5100] text-white py-3 rounded-xl font-bold text-xs shadow-md hover:opacity-95 transition disabled:opacity-60"
                   >
-                    {isSubmitting ? "Submitting..." : "Submit Order"}
+                    {isSubmitting ? t("grab.submitting") : t("grab.submitOrder")}
                   </button>
                 )}
               </div>

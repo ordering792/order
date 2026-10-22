@@ -15,7 +15,7 @@ export default function RootLayout({
 }>) {
   const pathname = usePathname();
 
-  const isAuthPage = pathname === "/login" || pathname === "/register" || pathname === "/license" || pathname === "/deposit" || pathname === "/withdraw" || pathname === "/wallet_bind" || pathname === "/invite" || pathname === "/security" || pathname === "/orders" || pathname === "/support" || pathname === "/deposit/history" || pathname === "/profile" ;
+  const isAuthPage = pathname === "/login" || pathname === "/register" || pathname === "/license" || pathname === "/deposit" || pathname === "/withdraw" || pathname === "/wallet_bind" || pathname === "/invite" || pathname === "/security" || pathname === "/orders" || pathname === "/support" || pathname === "/deposit/history" || pathname === "/profile" || pathname === "/notifications" ;
 
   const showChrome = !isAuthPage;
 
