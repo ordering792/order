@@ -5,9 +5,6 @@ import { walletDict } from "./wallet";
 import { ordersDict } from "./orders";
 import { supportDict } from "./support";
 import { sharedDict } from "./shared";
-import { adminDict } from "./admin";
-import { adminUiDict } from "./adminUi";
-import { adminOrdersDict } from "./adminOrders";
 import { depositDict } from "./deposit";
 
 const features: Dict[] = [
@@ -18,9 +15,6 @@ const features: Dict[] = [
   ordersDict,
   supportDict,
   sharedDict,
-  adminDict,
-  adminUiDict,
-  adminOrdersDict,
 ];
 
 const LANG_LIST: Lang[] = ["en", "es", "pt", "ar", "hi", "ja", "th", "ko", "zh"];
