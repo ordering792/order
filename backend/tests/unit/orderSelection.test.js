@@ -101,12 +101,30 @@ describe("selectProductsForRange", () => {
     expect(selectProductsForRange(candidates, 1, 40000n, 50000n)).toEqual([]);
   });
 
-  it("is deterministic for equal distances", () => {
+  it("picks randomly among products inside the range", () => {
     const candidates = [p("b", 45000n), p("a", 45000n)];
 
-    const first = selectProductsForRange(candidates, 1, 40000n, 50000n);
-    const second = selectProductsForRange(candidates, 1, 40000n, 50000n);
+    const pickedIds = new Set();
 
-    expect(first[0].id).toBe(second[0].id);
+    for (let i = 0; i < 200; i += 1) {
+      pickedIds.add(selectProductsForRange(candidates, 1, 40000n, 50000n)[0].id);
+    }
+
+    // ၂၀၀ ခေါ် ဆွဲရင် နှစ်လုံးလုံး ပေါ်လာမယ် (random သောလာ)
+    expect(pickedIds).toEqual(new Set(["a", "b"]));
+  });
+
+  it("never picks a product above the upper bound, even when random", () => {
+    const candidates = [
+      p("a", 51000n),
+      p("b", 49000n),
+      p("c", 48000n),
+      p("d", 47000n),
+    ];
+
+    for (let i = 0; i < 50; i += 1) {
+      const picked = selectProductsForRange(candidates, 2, 40000n, 50000n);
+      expect(picked.every((x) => x.priceCents <= 50000n)).toBe(true);
+    }
   });
 });
