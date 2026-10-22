@@ -64,14 +64,29 @@ function makeToken(user) {
   });
 }
 
-async function seedPlan(user, { luckyPositions = [], totalOrders = 5 } = {}) {
-  await Product.insertMany([
+async function seedPlan(
+  user,
+  { luckyPositions = [], totalOrders = 5, productCount = 5 } = {},
+) {
+  const baseProducts = [
     { name: "Item A", price: "450.00", code: "P001", category: "Office" },
     { name: "Item B", price: "470.00", code: "P002", category: "Office" },
     { name: "Item C", price: "430.00", code: "P003", category: "Office" },
     { name: "Item D", price: "410.00", code: "P004", category: "Office" },
     { name: "Item E", price: "490.00", code: "P005", category: "Office" },
-  ]);
+  ];
+
+  const extraProducts = Array.from(
+    { length: Math.max(0, productCount - baseProducts.length) },
+    (_, i) => ({
+      name: `Item ${i + 6}`,
+      price: `${(405 + i * 5).toFixed(2)}`,
+      code: `P${String(i + 6).padStart(3, "0")}`,
+      category: "Office",
+    }),
+  );
+
+  await Product.insertMany([...baseProducts, ...extraProducts]);
 
   const plan = await OrderPlan.create({
     userId: user._id,
@@ -113,6 +128,56 @@ async function seedPlan(user, { luckyPositions = [], totalOrders = 5 } = {}) {
 }
 
 describe("Grab / matching flow", () => {
+  // helper တွေ — admin/owner API တွေကို ခေါ်သုံးပါ
+  const apiCreatePlan = async (admin, user, totalOrders) => {
+    const res = await request(app)
+      .post("/api/orders/plans")
+      .set("Authorization", `Bearer ${makeToken(admin)}`)
+      .send({ userId: user._id.toString(), totalOrders });
+    return res.body.plan;
+  };
+
+  const apiDeposit = async (user, amount) => {
+    const res = await request(app)
+      .post("/api/transactions")
+      .set("Authorization", `Bearer ${makeToken(user)}`)
+      .send({ type: "deposit", amount, proofScreenshot: "data:image/png;base64,iVBORw0KGgo=" });
+    return res.body.transaction;
+  };
+
+  const apiAccept = async (admin, transactionId) => {
+    await request(app)
+      .post(`/api/transactions/admin/${transactionId}/accept`)
+      .set("Authorization", `Bearer ${makeToken(admin)}`)
+      .send({});
+    return transactionId;
+  };
+
+  const apiGenerate = async (admin, planId, depositTransactionId) =>
+    request(app)
+      .post(`/api/orders/plans/${planId}/generate`)
+      .set("Authorization", `Bearer ${makeToken(admin)}`)
+      .send({ depositTransactionId });
+
+  const apiSummary = async (user) => {
+    const res = await request(app)
+      .get("/api/tasks/summary")
+      .set("Authorization", `Bearer ${makeToken(user)}`);
+    return res.body.summary;
+  };
+
+  // price range 800-1000 ထဲက product တွေ (deposit 1000 အတွက် — ၈၀%-၁၀%)
+  const apiSeedProducts = async (count) => {
+    await Product.insertMany(
+      Array.from({ length: count }, (_, i) => ({
+        name: `Bulk Item ${i + 1}`,
+        price: `${(805 + i * 4).toFixed(2)}`,
+        code: `B${String(i + 1).padStart(3, "0")}`,
+        category: "Office",
+      })),
+    );
+  };
+
   it("summary starts with zero counts and the plan total", async () => {
     const user = await createUser();
     await seedPlan(user, { totalOrders: 5 });
@@ -297,6 +362,29 @@ describe("Grab / matching flow", () => {
     expect(summary.body.summary.remainingCount).toBe(4);
     expect(summary.body.summary.undoneCount).toBe(1);
   });
+
+  it("creates as many orders as the admin asked for", async () => {
+    const admin = await createUser("admin");
+    const user = await createUser();
+
+    await apiSeedProducts(25);
+
+    for (const totalOrders of [10, 20, 7]) {
+      const planUser = await createUser();
+      const plan = await apiCreatePlan(admin, planUser, totalOrders);
+      const deposit = await apiDeposit(planUser, "1000.00");
+      const accepted = await apiAccept(admin, deposit._id);
+
+      const gen = await apiGenerate(admin, plan._id, accepted);
+      expect(gen.status).toBe(201);
+
+      const tasks = await Task.find({ userId: planUser._id });
+      expect(tasks).toHaveLength(totalOrders);
+
+      const summary = await apiSummary(planUser);
+      expect(summary.totalOrderNumber).toBe(totalOrders);
+      expect(summary.remainingCount).toBe(totalOrders);
+    }  });
 
   it("cannot match without a plan", async () => {
     const user = await createUser();
