@@ -75,6 +75,7 @@ export default function GrabPage() {
       .grabSummary()
       .then((res) => setSummary(res.summary))
       .catch(() => {});
+
   }, []);
 
   useEffect(() => {
@@ -187,7 +188,9 @@ export default function GrabPage() {
                 <Diamond size={16} className="text-amber-300" />
               </div>
               <div>
-                <h3 className="font-bold text-base tracking-wide">{summary.vipLevel}</h3>
+                <h3 className="font-bold text-base tracking-wide">
+                {summary.vipLevel}
+              </h3>
                 <p className="text-[11px] text-orange-100 font-medium">
                   {t("grab.commissionRate", { rate: summary.commissionRate, count: summary.totalOrderNumber })}
                 </p>
@@ -258,10 +261,10 @@ export default function GrabPage() {
           <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-2">
             <h4 className="font-bold text-gray-800 text-xs flex items-center">
               <AlertCircle size={14} className="text-[#ff6600] mr-1.5" />
-              {t("grab.rulesTitle")}
+                {t("grab.rulesTitle")}
             </h4>
             <p className="text-[11px] text-gray-500 leading-relaxed">
-              {t("grab.rulesBody")}
+                {t("grab.rulesBody")}
             </p>
           </div>
 
