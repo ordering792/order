@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import {
   api,
   ApiAdminUser,
   ApiPlan,
+  ApiProduct,
   ApiTask,
   ApiTransaction,
 } from "@/lib/api";
@@ -23,6 +24,7 @@ export default function AdminPlansPage() {
   >([]);
   const [users, setUsers] = useState<ApiAdminUser[]>([]);
   const [transactions, setTransactions] = useState<ApiTransaction[]>([]);
+  const [products, setProducts] = useState<ApiProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -44,11 +46,13 @@ export default function AdminPlansPage() {
       api.adminListPlans(),
       api.adminListUsers({ limit: 200 }),
       api.adminListTransactions(),
+      api.get<{ products: ApiProduct[] }>("/products"),
     ])
-      .then(([planRes, userRes, txRes]) => {
+      .then(([planRes, userRes, txRes, productRes]) => {
         setPlans(planRes.plans);
         setUsers(userRes.users);
         setTransactions(txRes.transactions);
+        setProducts(productRes.products);
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
@@ -71,6 +75,29 @@ export default function AdminPlansPage() {
     },
     [transactions],
   );
+
+  const selectedDepositCents = useMemo(() => {
+    if (!userId) return null;
+
+    const deposit = depositsFor(userId).accepted;
+    if (!deposit) return null;
+
+    return Math.round(Number(money(deposit.amount)) * 100);
+  }, [userId, depositsFor]);
+
+  // Catalog coverage — deposit အလိုက် band ထဲက product ဘယ်လောက် ရှိလဲ
+  const catalogCoverage = useMemo(() => {
+    if (!selectedDepositCents) return null;
+
+    const lo = Math.floor((selectedDepositCents * 80) / 100);
+    const hi = selectedDepositCents;
+    const inRange = products.filter((product) => {
+      const price = Math.round(Number(money(product.price)) * 100);
+      return price >= lo && price <= hi;
+    }).length;
+
+    return { lo, hi, inRange, total: products.length };
+  }, [selectedDepositCents, products]);
 
   const createPlan = async () => {
     setError("");
@@ -241,7 +268,21 @@ export default function AdminPlansPage() {
             rows={luckyRows}
             totalOrders={totalOrders}
             onChange={setLuckyRows}
+            products={products}
+            depositCents={selectedDepositCents}
           />
+
+          {catalogCoverage && (
+            <p className="mt-3 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-[11px] text-slate-500">
+              {t("admin.lucky.coverage", {
+                lo: `${(catalogCoverage.lo / 100).toFixed(2)}`,
+                hi: `${(catalogCoverage.hi / 100).toFixed(2)}`,
+                count: catalogCoverage.inRange,
+                total: catalogCoverage.total,
+                orders: Number(totalOrders),
+              })}
+            </p>
+          )}
 
           <div className="mt-4 flex gap-2">
             <button

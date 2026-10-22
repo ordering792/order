@@ -51,7 +51,8 @@ async function main() {
       count: 1,
       storageEngine: "wiredTiger",
     },
-    instanceOpts: [{ port: 47117 }],
+    // 47117 က backend tests (globalSetup) နဲ့ conflict ဖြစ်တာမို့ နောက်နောင် port သုံးမယ်
+    instanceOpts: [{ port: 47118 }],
   });
 
   const uri = mongod.getUri();
