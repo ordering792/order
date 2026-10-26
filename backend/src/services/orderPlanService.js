@@ -5,6 +5,7 @@ const Product = require("../models/Product");
 const OrderPlan = require("../models/OrderPlan");
 const { toCents } = require("../utils/money");
 const { httpError } = require("../utils/httpError");
+const { isDuplicateKeyError } = require("../utils/duplicateKey");
 const { emitToAdmins } = require("../socket");
 
 async function assertTargetUser(userId, actor) {
@@ -108,16 +109,32 @@ async function createPlan({ userId, totalOrders, luckyPositions }, actor) {
     }
   }
 
-  const plan = await OrderPlan.create({
-    userId: user._id,
-    totalOrders,
-    luckyPositions: luckyPositions.map((position) => ({
-      orderNumber: position.orderNumber,
-      productId: position.productId || null,
-      requiredDeposit: position.requiredDeposit,
-      luckyCommission: position.luckyCommission,
-    })),
-  });
+  let plan;
+
+  try {
+    plan = await OrderPlan.create({
+      userId: user._id,
+      totalOrders,
+      luckyPositions: luckyPositions.map((position) => ({
+        orderNumber: position.orderNumber,
+        productId: position.productId || null,
+        requiredDeposit: position.requiredDeposit,
+        luckyCommission: position.luckyCommission,
+      })),
+    });
+  } catch (err) {
+    // A database created before multi-round plans still carries the old unique
+    // userId_1 index, so a second round fails at the index rather than at the
+    // guard above. Without this it surfaces as an opaque 500.
+    if (isDuplicateKeyError(err)) {
+      throw httpError(
+        409,
+        "This database still has the legacy unique index on order plans — run scripts/migrate-orderplan-index.js once",
+      );
+    }
+
+    throw err;
+  }
 
   emitToAdmins("order:plan_created", {
     planId: String(plan._id),

@@ -2,6 +2,7 @@ import { request } from "./client";
 import type {
   ApiAdminStats,
   ApiAdminUser,
+  ApiDepositSummary,
   ApiPlan,
   ApiProduct,
   ApiTask,
@@ -181,6 +182,15 @@ export const api = {
     );
   },
 
+  adminDepositSummary: (userIds: string[]) => {
+    const query = new URLSearchParams();
+    if (userIds.length > 0) query.set("userIds", userIds.join(","));
+    const qs = query.toString();
+    return request<{ deposits: ApiDepositSummary[] }>(
+      `/transactions/admin/deposits${qs ? `?${qs}` : ""}`,
+    );
+  },
+
   acceptTransaction: (id: string) =>
     request<{ transaction: ApiTransaction }>(
       `/transactions/admin/${id}/accept`,
@@ -279,10 +289,13 @@ export const api = {
       `/tasks/user/${userId}${planId ? `?planId=${encodeURIComponent(planId)}` : ""}`,
     ),
 
-  adminGeneratePlan: (id: string, depositTransactionId: string) =>
+  // depositTransactionId မပေးရင် balance round အဖြစ် generate လုပ်မယ်။
+  adminGeneratePlan: (id: string, depositTransactionId?: string) =>
     request<{ plan: ApiPlan }>(`/orders/plans/${id}/generate`, {
       method: "POST",
-      body: JSON.stringify({ depositTransactionId }),
+      body: JSON.stringify(
+        depositTransactionId ? { depositTransactionId } : {},
+      ),
     }),
 
   adminDeletePlan: (id: string) =>

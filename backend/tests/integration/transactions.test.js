@@ -19,6 +19,7 @@ const { emitToAdmins } = require("../../src/socket");
 const app = require("../../src/app");
 const User = require("../../src/models/User");
 const Transaction = require("../../src/models/Transaction");
+const OrderPlan = require("../../src/models/OrderPlan");
 
 const JWT_SECRET = process.env.JWT_SECRET || "test-secret";
 
@@ -318,6 +319,178 @@ describe("Transaction endpoints", () => {
       expect(res.body.transactions[0].userId.walletAddress).toBe(
         "TReviewWalletAddress999",
       );
+    });
+  });
+
+  describe("GET /api/transactions/admin/deposits", () => {
+    it("returns the accepted deposit of a requested user", async () => {
+      const admin = await createUser("admin");
+      const user = await createUser("user", { balance: "120.00" });
+
+      await Transaction.create({
+        userId: user._id,
+        type: "deposit",
+        amount: "500.00",
+        status: "accepted",
+      });
+
+      const res = await request(app)
+        .get(`/api/transactions/admin/deposits?userIds=${user._id}`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.deposits).toHaveLength(1);
+      expect(res.body.deposits[0].userId).toBe(user._id.toString());
+      expect(res.body.deposits[0].accepted.amount).toBe("500.00");
+      expect(res.body.deposits[0].freeAccepted._id).toBeDefined();
+      expect(res.body.deposits[0].balance).toBe("120.00");
+    });
+
+    it("finds deposits that are older than the newest 100 transactions", async () => {
+      const admin = await createUser("admin");
+      const user = await createUser();
+
+      await Transaction.create({
+        userId: user._id,
+        type: "deposit",
+        amount: "500.00",
+        status: "accepted",
+        createdAt: new Date("2024-01-01"),
+        updatedAt: new Date("2024-01-01"),
+      });
+
+      // 120 ခုက အသစ် transaction တွေ — adminList က နောက်ဆုံး ၁၀၀ ခုပဲ ပြန်ရတယ်။
+      const noise = Array.from({ length: 120 }, (_, index) => ({
+        userId: user._id,
+        type: "withdraw",
+        amount: "10.00",
+        status: "accepted",
+      }));
+      await Transaction.create(noise);
+
+      const res = await request(app)
+        .get(`/api/transactions/admin/deposits?userIds=${user._id}`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.deposits[0].accepted.amount).toBe("500.00");
+    });
+
+    it("marks a deposit that a plan already used as not free", async () => {
+      const admin = await createUser("admin");
+      const user = await createUser();
+
+      const deposit = await Transaction.create({
+        userId: user._id,
+        type: "deposit",
+        amount: "500.00",
+        status: "accepted",
+      });
+
+      await OrderPlan.create({
+        userId: user._id,
+        totalOrders: 10,
+        status: "generated",
+        initialDeposit: "500.00",
+        initialDepositTxId: deposit._id,
+      });
+
+      const res = await request(app)
+        .get(`/api/transactions/admin/deposits?userIds=${user._id}`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.deposits[0].accepted._id).toBe(deposit._id.toString());
+      expect(res.body.deposits[0].freeAccepted).toBeNull();
+    });
+
+    it("lists pending deposits separately", async () => {
+      const admin = await createUser("admin");
+      const user = await createUser();
+
+      await Transaction.create({
+        userId: user._id,
+        type: "deposit",
+        amount: "250.00",
+        status: "pending",
+      });
+
+      const res = await request(app)
+        .get(`/api/transactions/admin/deposits?userIds=${user._id}`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.deposits[0].accepted).toBeNull();
+      expect(res.body.deposits[0].pending).toHaveLength(1);
+      expect(res.body.deposits[0].pending[0].amount).toBe("250.00");
+    });
+
+    it("returns empty values for a user without deposits", async () => {
+      const admin = await createUser("admin");
+      const user = await createUser();
+
+      const res = await request(app)
+        .get(`/api/transactions/admin/deposits?userIds=${user._id}`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.deposits[0].accepted).toBeNull();
+      expect(res.body.deposits[0].freeAccepted).toBeNull();
+      expect(res.body.deposits[0].pending).toHaveLength(0);
+    });
+
+    it("rejects plain users", async () => {
+      const user = await createUser();
+
+      const res = await request(app)
+        .get(`/api/transactions/admin/deposits?userIds=${user._id}`)
+        .set("Authorization", `Bearer ${makeToken(user)}`);
+
+      expect(res.status).toBe(403);
+    });
+
+    it("keeps an owner inside their own downline", async () => {
+      const owner = await createUser("owner");
+      const downline = await createUser("user", {
+        ownerId: owner._id,
+        balance: "77.00",
+      });
+      const foreign = await createUser("user", { balance: "55.00" });
+
+      await Transaction.create([
+        {
+          userId: downline._id,
+          type: "deposit",
+          amount: "500.00",
+          status: "accepted",
+        },
+        {
+          userId: foreign._id,
+          type: "deposit",
+          amount: "900.00",
+          status: "accepted",
+        },
+      ]);
+
+      const res = await request(app)
+        .get(
+          `/api/transactions/admin/deposits?userIds=${downline._id},${foreign._id}`,
+        )
+        .set("Authorization", `Bearer ${makeToken(owner)}`);
+
+      expect(res.status).toBe(200);
+
+      const mine = res.body.deposits.find(
+        (item) => item.userId === downline._id.toString(),
+      );
+      const other = res.body.deposits.find(
+        (item) => item.userId === foreign._id.toString(),
+      );
+
+      expect(mine.accepted.amount).toBe("500.00");
+      expect(mine.balance).toBe("77.00");
+      expect(other.accepted).toBeNull();
+      expect(other.balance).toBe("0.00");
     });
   });
 

@@ -117,11 +117,38 @@ node scripts/create-admin.js --phone 09xxxxxxxxx
 node scripts/migrate-task-index.js
 ```
 
-OrderPlan index အတွက်လည်း အလားတူ script ရှိပါတယ် — ရှိပြီးသား DB ဆို `scripts/migrate-orderplan-index.js` ကို တစ်ခါ run ပါ။
+OrderPlan မှာလည်း အလားတူ problem ရှိတယ် — အရင် schema က `userId` ကို **unique** တင်ထားခဲ့တယ်၊ round ၂ ကို ခွင့်ပြုဖို့ ပြောင်းလိုက်ပေမယ့် Mongoose က အဟောင်း index ကို မဖျက်သေးဘူး။ ရှိပြီးသား DB မှာ အခုလို တွေ့ရမယ်:
+
+```
+E11000 duplicate key error collection: <db>.orderplans index: userId_1
+```
+
+Admin panel မှာ order plan ထပ်ဖန်တီးရင် "Internal server error" တက်ပြီး terminal ထဲ အထက်ပါ error ပါရင် —
+
+```bash
+node scripts/migrate-orderplan-index.js
+```
+
+တစ်ခါ run ပါ (script ကိုယ်တိုင်က before/after index list ပြမယ်)။ Run မတင်ခင် plan ဖန်တီးခြင်းက `409 This database still has the legacy unique index...` နဲ့ ရှင်းရှင်းလင်းလင်း ငြင်းခံရပါပြီ — 500 နဲ့ stack dump မထွက်တော့ဘူး။
+
+Task index ကလည်း အလားတူ — round ၂ ကို generate လုပ်တဲ့အခါ (Admin → "Generate orders") orderNumber ၁ ပြန်ထပ်လို့ E11000 ဖြစ်ပြီး အခု `409 This database still has the legacy unique index on tasks...` နဲ့ ရှင်းသပ်ပေးမယ်။ ဒါကြောင့် **နှစ်ခုလုံး** run ပါ (အစဉ်မရှိဘူး — ဘယ်ကြိုက်မဆို ပြန် run ချင်း safe ပါ)။
+
+```bash
+node scripts/migrate-task-index.js
+node scripts/migrate-orderplan-index.js
+```
+
+**Order round base (deposit / balance)** — generate လုပ်တဲ့အခါ base နှစ်မျိုး ရှိတယ် (`src/services/orderGenerationService.js`):
+
+- `depositTransactionId` ပေးရင် (Admin UI က free deposit ရှိတဲ့အခါ) — အရင်အတိုင်း deposit အပေါ် တွက်မယ် (order တစ်ခုချင်း product က deposit ရဲ့ 80–100%)။
+- မပေးရင် (free deposit မရှိတဲ့ round ၂၊ ၃ …) — အရင် **deposit လုပ်ဖူးတဲ့** user ဆို user ရဲ့ လက်ရှိ **balance** အပြည်အပြည်ကို base ထားမယ် (order တစ်ခုချင်း product က balance ရဲ့ 80–100%)။ deposit အသစ် မလိုဘူး — plan မှာ `initialDepositTxId = null` နဲ့ `currentBase = balance` မှတ်တယ်။
+- **Lucky order** က completion မှာ deposit transaction အစစ်ကို claim ဆက်လုပ်မယ် — generate ကို balance base နဲ့ လုပ်နိုင်ပေမယ့် lucky order ရောက်တဲ့အခါ user က `requiredDeposit` နဲ့ တိတိကျကျ တူတဲ့ deposit ထည့်ထားရမယ် (မထည့်ရင် completion မှာ error တက်မယ်)။ Lucky band က base (deposit သို့ balance) + အရင် lucky `requiredDeposit` တွေ ပေါင်းပြီး တွက်တယ်။
 
 ### 6. Socket.IO သတိထားရန်
 
 Railway websocket support လုပ်တယ်၊ ဒါပေမယ့် **backend service တစ်ခုတည်း** သာထားပါ — Redis adapter မထည့်ရသေးသလို့ instance ၂ ခုဆို B က REST request ထဲက emit က A socket ကို silently drop ဖြစ်မယ် (`src/socket/index.js`)။ Support chat + realtime balance update အလုပ်လုပ်ဖို့ single instance မဖြစ်မနေ။
+
+Admin app ကလည်း socket ချိတ်ပြီး order plan page မှာ deposit status + plan status ကို live update လုပ်ပါတယ် (role = `admin` သာ "admins" room ထဲဝင်တယ် — owner တွေက 15 စက္ကန့် polling နဲ့ update ဖြစ်ပါတယ်)။
 
 ### 7. Health check
 
@@ -164,9 +191,9 @@ curl http://localhost:5000/api/health
 ## Tests
 
 ```bash
-cd backend  && npm test    # 238 tests / 14 suites (jest + replica-set MongoDB)
-cd frontend && npm test    # 56 tests / 6 suites
-cd admin    && npm test    # 55 tests / 5 suites
+cd backend  && npm test    # 261 tests / 15 suites (jest + replica-set MongoDB)
+cd frontend && npm test    # 70 tests / 7 suites
+cd admin    && npm test    # 76 tests / 6 suites
 
 # browser e2e (Playwright — service တွေ run တင်ထားရမယ်)
 cd frontend && npm run test:e2e

@@ -29,6 +29,21 @@ export interface ApiTransaction {
   updatedAt: string;
 }
 
+export interface ApiDeposit {
+  _id: string;
+  amount: MoneyValue;
+}
+
+// Plans page အတွက် user တစ်ခုလုံးရဲ့ deposit အခြေပြန် — accepted က အသစ်ဆုံး
+// deposit ဖြစ်ပြီး freeAccepted က အသစ် round အတွက် ရသေးတဲ့ deposit ပဲ။
+export interface ApiDepositSummary {
+  userId: string;
+  accepted: ApiDeposit | null;
+  freeAccepted: ApiDeposit | null;
+  pending: ApiDeposit[];
+  balance: MoneyValue;
+}
+
 export interface ApiTask {
   _id: string;
   orderNumber: number;

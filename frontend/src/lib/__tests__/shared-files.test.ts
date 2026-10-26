@@ -10,6 +10,7 @@ const SHARED_FILES = [
   "src/lib/auth.tsx",
   "src/lib/language.ts",
   "src/lib/money.ts",
+  "src/lib/socket.ts",
   "src/lib/uploadImage.ts",
   "src/lib/__tests__/api-client.test.ts",
   "src/lib/__tests__/money.test.ts",

@@ -21,7 +21,8 @@ const createPlanSchema = z.object({
 });
 
 const generateSchema = z.object({
-  depositTransactionId: z.string().length(24),
+  // Balance round အတွက် မပါလဲ ရမယ် — ပါရင် deposit round အဖြစ် တွက်မယ်။
+  depositTransactionId: z.string().length(24).optional(),
 });
 
 // Error handling ကို asyncHandler + app.js global handler က ထားတယ်။

@@ -3,6 +3,7 @@ const Task = require("../models/Task");
 const Product = require("../models/Product");
 const Transaction = require("../models/Transaction");
 const OrderPlan = require("../models/OrderPlan");
+const User = require("../models/User");
 const { toCents, decimal } = require("../utils/money");
 const {
   projectedBaseCents,
@@ -12,6 +13,7 @@ const {
 } = require("./orderSelection");
 const { getPlanById } = require("./orderPlanService");
 const { httpError } = require("../utils/httpError");
+const { isDuplicateKeyError } = require("../utils/duplicateKey");
 const { emitToAdmins } = require("../socket");
 
 // Plan တစ်ခုကနေ order အားလုံးကို ဖန်တီးပြီး task အဖြစ် သိမ်းတယ်။
@@ -42,34 +44,78 @@ async function generateOrders({ planId, depositTransactionId }, actor) {
         throw httpError(409, "User already has tasks");
       }
 
-      const deposit =
-        await Transaction.findById(depositTransactionId).session(session);
+      // Base နှစ်မျိုး — depositTransactionId ပေးရင် deposit အပေါ် တွက်မယ် (round ၁ /
+      // lucky ပါတဲ့ plan)။ မပေးရင် အရင် deposit လုပ်ဖူးပြီး lucky မပါတဲ့ plan အတွက်
+      // user ရဲ့ လက်ရှိ balance ကို base ထားမယ် — deposit အသစ် မလိုဘူး။
+      let baseCents;
+      let depositTx = null;
 
-      if (
-        !deposit ||
-        deposit.type !== "deposit" ||
-        deposit.status !== "accepted" ||
-        !deposit.userId.equals(fresh.userId)
-      ) {
-        throw httpError(
-          400,
-          "An accepted deposit transaction for this user is required",
-        );
-      }
+      if (depositTransactionId) {
+        const deposit =
+          await Transaction.findById(depositTransactionId).session(session);
 
-      const usedElsewhere = await OrderPlan.exists({
-        initialDepositTxId: deposit._id,
-        _id: { $ne: fresh._id },
-      }).session(session);
+        if (
+          !deposit ||
+          deposit.type !== "deposit" ||
+          deposit.status !== "accepted" ||
+          !deposit.userId.equals(fresh.userId)
+        ) {
+          throw httpError(
+            400,
+            "An accepted deposit transaction for this user is required",
+          );
+        }
 
-      if (usedElsewhere) {
-        throw httpError(409, "Deposit already used for another plan");
-      }
+        const usedElsewhere = await OrderPlan.exists({
+          initialDepositTxId: deposit._id,
+          _id: { $ne: fresh._id },
+        }).session(session);
 
-      const depositCents = toCents(deposit.amount.toString());
+        if (usedElsewhere) {
+          throw httpError(409, "Deposit already used for another plan");
+        }
 
-      if (depositCents < 1n) {
-        throw httpError(400, "Deposit amount must be positive");
+        const depositCents = toCents(deposit.amount.toString());
+
+        if (depositCents < 1n) {
+          throw httpError(400, "Deposit amount must be positive");
+        }
+
+        depositTx = deposit;
+        baseCents = depositCents;
+      } else {
+        // Lucky order ပါလဲ balance base နဲ့ လုပ်လို့ရတယ် — lucky order ရောက်တဲ့အခါ
+        // completion မှာ requiredDeposit အတိအကျနဲ့တူတဲ့ deposit transaction ကို
+        // claim လုပ်တာက အတိုင်းအတာ ထားမယ် (taskCompletionService)။
+        const hasDeposited = await Transaction.exists({
+          userId: fresh.userId,
+          type: "deposit",
+          status: "accepted",
+        }).session(session);
+
+        if (!hasDeposited) {
+          throw httpError(
+            400,
+            "User must complete a first deposit before balance-based orders",
+          );
+        }
+
+        const user = await User.findById(fresh.userId).session(session);
+
+        if (!user) {
+          throw httpError(409, "User unavailable");
+        }
+
+        const balanceCents = toCents(user.balance.toString());
+
+        if (balanceCents < 1n) {
+          throw httpError(
+            400,
+            "User balance is empty — an accepted deposit is required",
+          );
+        }
+
+        baseCents = balanceCents;
       }
 
       const luckyByNumber = new Map(
@@ -114,11 +160,20 @@ async function generateOrders({ planId, depositTransactionId }, actor) {
         .session(session)
         .sort({ price: 1, _id: 1 });
 
-      const pool = candidateDocs.map((doc) => ({
-        id: doc._id,
-        priceCents: toCents(doc.price.toString()),
-        doc,
-      }));
+      const pool = [];
+
+      for (const doc of candidateDocs) {
+        try {
+          pool.push({
+            id: doc._id,
+            priceCents: toCents(doc.price.toString()),
+            doc,
+          });
+        } catch {
+          // price မရှိတဲ့/မှားတဲ့ product ကို ချန်တယ် — ဒါကြောင့် catalog ထဲက
+          // အလိုးလိုးတစ်ခုကပဲ မှားနေရင် generate အားလုံး 500 မဖြစ်ဘူး။
+        }
+      }
 
       const taskDocs = [];
 
@@ -128,7 +183,7 @@ async function generateOrders({ planId, depositTransactionId }, actor) {
         orderNumber += 1
       ) {
         const base = projectedBaseCents(
-          depositCents,
+          baseCents,
           basePositions,
           orderNumber,
         );
@@ -156,7 +211,11 @@ async function generateOrders({ planId, depositTransactionId }, actor) {
 
             pool.splice(pool.indexOf(autoPicked), 1);
           } else {
-            priceCents = toCents(product.price.toString());
+            try {
+              priceCents = toCents(product.price.toString());
+            } catch {
+              throw httpError(400, "Lucky product has an invalid price");
+            }
 
             if (priceCents < lo || priceCents > hi) {
               throw httpError(
@@ -218,9 +277,11 @@ async function generateOrders({ planId, depositTransactionId }, actor) {
       await Task.insertMany(taskDocs, { session });
 
       fresh.status = "generated";
-      fresh.initialDeposit = decimal(depositCents);
-      fresh.initialDepositTxId = deposit._id;
-      fresh.currentBase = decimal(depositCents);
+      // Balance round မှာ deposit မရှိလို့ initialDeposit/initialDepositTxId က null
+      // အတိုင်း ထားမယ် — round base က currentBase မှာ မှတ်တမ်းတင်တယ်။
+      fresh.initialDeposit = depositTx ? decimal(baseCents) : null;
+      fresh.initialDepositTxId = depositTx ? depositTx._id : null;
+      fresh.currentBase = decimal(baseCents);
       await fresh.save({ session });
 
       generated = fresh;
@@ -233,6 +294,17 @@ async function generateOrders({ planId, depositTransactionId }, actor) {
     });
 
     return generated;
+  } catch (err) {
+    // Round ၂ ကို မထည့်ခင် database က task ရဲ့ အဟောင်း (userId, orderNumber) unique
+    // index ကို ဆက်လက်မက်ရှိတာမို့ order number တွေ ပြန်တူထည့်ရင် E11000 ဖြစ်တယ်။
+    if (isDuplicateKeyError(err)) {
+      throw httpError(
+        409,
+        "This database still has the legacy unique index on tasks — run scripts/migrate-task-index.js once",
+      );
+    }
+
+    throw err;
   } finally {
     await session.endSession();
   }

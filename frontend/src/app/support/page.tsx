@@ -12,6 +12,7 @@ import { getStoredLang } from "../../lib/language";
 import { api, ApiError } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { useT } from "../../lib/i18n";
+import { getSocket } from "../../lib/socket";
 import RequireAuth from "../components/RequireAuth";
 
 interface ChatMessage {
@@ -70,6 +71,57 @@ export default function SupportPage() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Admin က ပြန်ပို့တဲ့ စာကို real-time လက်ခံမယ် — conversation room ထဲ ဝင်ပြီး
+  // message:new event ကို နားထောင်မယ်။
+  useEffect(() => {
+    if (!conversationId) return;
+
+    const socket = getSocket();
+    if (!socket) return;
+
+    const join = () => {
+      socket.emit("conversation:join", conversationId, () => {});
+    };
+
+    if (socket.connected) join();
+    socket.on("connect", join);
+
+    const onNewMessage = (payload: {
+      conversationId?: string;
+      message?: ChatMessage;
+    }) => {
+      const incoming = payload?.message;
+      if (!incoming || payload.conversationId !== conversationId) return;
+
+      setMessages((prev) => {
+        if (prev.some((m) => m._id === incoming._id)) return prev;
+
+        // Optimistic temp message ကို server ထဲက message နဲ့ အစားထိုးမယ်။
+        const tempIndex = prev.findIndex((m) => m._id.startsWith("temp-"));
+        if (tempIndex !== -1) {
+          const next = [...prev];
+          next[tempIndex] = {
+            _id: String(incoming._id),
+            senderType: incoming.senderType,
+            body: incoming.body,
+            createdAt: incoming.createdAt,
+          };
+          return next;
+        }
+
+        return [...prev, incoming];
+      });
+    };
+
+    socket.on("message:new", onNewMessage);
+
+    return () => {
+      socket.off("connect", join);
+      socket.off("message:new", onNewMessage);
+      socket.emit("conversation:leave", conversationId);
+    };
+  }, [conversationId]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();

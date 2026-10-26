@@ -63,6 +63,9 @@ const orderPlanSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Transaction",
       default: null,
+      // Deposit တစ်ခု ဘယ် round မှာ အသုံးပြုပြီးသလဲ ရှာဖွေရန် — admin deposit summary
+      // က ဒီ field ကို query လုပ်တယ်။
+      index: true,
     },
 
     currentBase: {

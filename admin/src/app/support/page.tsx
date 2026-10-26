@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useT } from "@/lib/i18n";
+import { getSocket } from "@/lib/socket";
 
 interface AdminConversation {
   _id: string;
@@ -29,41 +30,108 @@ export default function AdminSupportPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const load = useCallback(() => {
-    setLoading(true);
-    setError("");
+  const load = useCallback((silent = false) => {
+    if (!silent) {
+      setLoading(true);
+      setError("");
+    }
 
-    api
+    return api
       .adminListConversations()
       .then((res) => {
         const list = (res.conversations ?? []) as AdminConversation[];
         setConversations(list);
 
-        if (selected) {
-          const fresh = list.find((c) => c._id === selected._id);
-          if (fresh) setSelected(fresh);
-        }
+        setSelected((current) => {
+          if (!current) return current;
+          const fresh = list.find((c) => c._id === current._id);
+          return fresh ?? current;
+        });
       })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
-  }, [selected]);
-
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      .catch((err) => {
+        if (!silent) setError(err.message);
+      })
+      .finally(() => {
+        if (!silent) setLoading(false);
+      });
   }, []);
 
-  const open = async (conversation: AdminConversation) => {
-    setSelected(conversation);
-    setError("");
-
+  const loadMessages = useCallback(async (conversationId: string) => {
     try {
-      const res = await api.adminGetConversation(conversation._id);
+      const res = await api.adminGetConversation(conversationId);
       setMessages((res.messages ?? []) as AdminMessage[]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed");
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const open = useCallback(
+    async (conversation: AdminConversation) => {
+      setSelected(conversation);
+      setError("");
+      setMessages([]);
+      await loadMessages(conversation._id);
+    },
+    [loadMessages],
+  );
+
+  // User က စာပို့တာနဲ့ ချက်ချင်း ပြမယ် — conversation:new / conversation:updated
+  // event တွေကို backend က "admins" room ထဲ ပို့ပြီးသား။
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+
+    const refresh = () => {
+      void load(true);
+    };
+
+    const onConversationUpdated = (payload: { conversationId?: string }) => {
+      refresh();
+      // ဖွင့်ထားတဲ့ conversation အတွက်ပဲ message panel ကို ပြန်ဖတ်မယ် —
+      // မဟုတ်ရင် အခြား conversation ရဲ့ စာတွေ ပြနေမယ်။
+      if (payload?.conversationId && selected?._id === payload.conversationId) {
+        void loadMessages(payload.conversationId);
+      }
+    };
+
+    socket.on("conversation:new", refresh);
+    socket.on("conversation:updated", onConversationUpdated);
+    // Socket နောက်မှ ချိတ်ရင် လွတ်သွားတဲ့ event တွေကို ဖုံးအုပ်ဖို့။
+    socket.on("connect", refresh);
+
+    return () => {
+      socket.off("conversation:new", refresh);
+      socket.off("conversation:updated", onConversationUpdated);
+      socket.off("connect", refresh);
+    };
+  }, [load, loadMessages, selected]);
+
+  // Socket မရတဲ့အခါ (owner role / connection ပြတ်တာ) ကို ဖုံးအုပ်ဖို့
+  // tab ပြန်လာတိုင်းနဲ့ ခပ်ကြားခပ်ကြား ပြန်စစ်မယ်။
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      void load(true);
+    };
+
+    window.addEventListener("focus", onVisible);
+    document.addEventListener("visibilitychange", onVisible);
+
+    const timer = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void load(true);
+    }, 15000);
+
+    return () => {
+      window.removeEventListener("focus", onVisible);
+      document.removeEventListener("visibilitychange", onVisible);
+      clearInterval(timer);
+    };
+  }, [load]);
 
   const send = async () => {
     if (!selected || !reply.trim()) return;
@@ -72,7 +140,8 @@ export default function AdminSupportPage() {
     try {
       await api.adminSendMessage(selected._id, reply.trim());
       setReply("");
-      open(selected);
+      await loadMessages(selected._id);
+      void load(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed");
     }
@@ -83,7 +152,7 @@ export default function AdminSupportPage() {
     setError("");
     try {
       await api.adminCloseConversation(selected._id);
-      load();
+      await load(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed");
     }

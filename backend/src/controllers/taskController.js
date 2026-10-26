@@ -4,10 +4,16 @@ const User = require("../models/User");
 const { toCents, decimal } = require("../utils/money");
 const asyncHandler = require("../utils/asyncHandler");
 const { completeTask } = require("../services/taskCompletionService");
+const { getMyPlan } = require("../services/orderPlanService");
 
+// Admin က round အသစ် ထပ်ဖွင့်တာနဲ့ user screen မှာ အရင် round ရဲ့
+// completed order တွေ မပြတော့ရ — row တွေက DB ထဲမှာ အမြဲ ကျန်တယ်။
 exports.myTasks = asyncHandler(async (req, res) => {
+  const plan = await getMyPlan(req.user._id);
+
   const tasks = await Task.find({
     userId: req.user._id,
+    ...(plan ? { orderPlanId: plan._id } : {}),
   }).sort({ orderNumber: 1 });
 
   res.json({ tasks });

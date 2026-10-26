@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { usePathname } from "next/navigation";
 import {
   api,
   ApiError,
@@ -17,6 +18,7 @@ import {
   SESSION_EXPIRED_EVENT,
   storeSession,
 } from "./api";
+import { getToken } from "./api/client";
 
 interface AuthContextValue {
   user: ApiUser | null;
@@ -39,6 +41,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<ApiUser | null>(null);
   const [loading, setLoading] = useState(true);
   const refreshPromiseRef = useRef<Promise<void> | null>(null);
+  const pathname = usePathname();
 
   useEffect(() => {
     const stored = getStoredUser();
@@ -78,6 +81,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refreshPromiseRef.current = promise;
     return promise;
   }, []);
+
+  // Home/profile/withdraw က auth user ရဲ့ balance ကိုပဲ ပြတယ်။ ဒီ user က
+  // login အချိန်က localStorage copy သက်သက် ဖြစ်နေလို့ grab မှာ commission
+  // ရသွားလည်း အဟောင်းကိုပဲ ပြနေတာ။ Page ပြောင်းတိုင်းနဲ့ tab ပြန်ဝင်တိုင်း
+  // server ကနေ အသစ်ယူမယ် — token မရှိတဲ့ guest အတွက် ဘယ်တော့မှ မခေါ်ဘူး။
+  useEffect(() => {
+    if (!getToken()) return;
+    void refreshUser();
+  }, [pathname, refreshUser]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== "visible" || !getToken()) return;
+      void refreshUser();
+    };
+
+    window.addEventListener("focus", onVisible);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("focus", onVisible);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [refreshUser]);
 
   const login = useCallback(async (phone: string, password: string) => {
     const res = await api.login({ phone, password });

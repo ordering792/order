@@ -210,6 +210,17 @@ describe("admin api endpoints", () => {
         "/orders/plans/plan1/generate"
       );
     });
+
+    it("adminGeneratePlan POSTs an empty body for a balance round", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ plan: {} }));
+
+      await api.adminGeneratePlan("plan1");
+
+      const body = JSON.parse(
+        (mockFetch.mock.calls[0][1] as RequestInit).body as string
+      );
+      expect(body.depositTransactionId).toBeUndefined();
+    });
   });
 
   describe("upload auth", () => {

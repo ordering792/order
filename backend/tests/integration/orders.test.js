@@ -295,6 +295,65 @@ describe("Order plan setup (POST /api/orders/plans)", () => {
     expect(res.status).toBe(409);
   });
 
+  it("turns a legacy unique userId index into 409, and migrates it away", async () => {
+    const admin = await createUser("admin");
+    const user = await createUser();
+
+    const first = await request(app)
+      .post("/api/orders/plans")
+      .set("Authorization", `Bearer ${makeToken(admin)}`)
+      .send({ userId: user._id.toString(), totalOrders: 3 });
+    expect(first.status).toBe(201);
+
+    // round 1 finished, so the business guard now allows round 2
+    await OrderPlan.updateOne(
+      { _id: first.body.plan._id },
+      { status: "completed" },
+    );
+
+    // the pre-multi-round schema left a unique userId_1 behind; the app's
+    // non-unique declaration never drops it on its own
+    await OrderPlan.syncIndexes();
+    await OrderPlan.collection
+      .dropIndex("userId_1")
+      .catch(() => undefined);
+    await OrderPlan.collection.createIndex(
+      { userId: 1 },
+      { unique: true, name: "userId_1" },
+    );
+
+    try {
+      const blocked = await request(app)
+        .post("/api/orders/plans")
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ userId: user._id.toString(), totalOrders: 4 });
+
+      expect(blocked.status).toBe(409);
+      expect(blocked.body.message).toMatch(/legacy unique index/);
+
+      await OrderPlan.collection.dropIndex("userId_1");
+      await OrderPlan.syncIndexes();
+
+      const migrated = await request(app)
+        .post("/api/orders/plans")
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ userId: user._id.toString(), totalOrders: 4 });
+
+      expect(migrated.status).toBe(201);
+      expect(migrated.body.plan.totalOrders).toBe(4);
+    } finally {
+      await OrderPlan.collection
+        .dropIndex("userId_1")
+        .catch(() => undefined);
+      await OrderPlan.syncIndexes();
+    }
+
+    const indexes = await OrderPlan.collection.indexes();
+    expect(
+      indexes.some((index) => index.unique && index.key?.userId === 1),
+    ).toBe(false);
+  });
+
   it("rejects a plan when user already has tasks", async () => {
     const admin = await createUser("admin");
     const user = await createUser();
@@ -962,6 +1021,142 @@ describe("Plan generation (POST /api/orders/plans/:id/generate)", () => {
   });
 });
 
+describe("Balance-based generation (no deposit transaction)", () => {
+  it("generates a new round from the user's current balance", async () => {
+    const admin = await createUser("admin");
+    const user = await createUser("user", { balance: "300.00" });
+    await makeDeposit(user._id, "500.00");
+    await seedProducts([240, 250, 260, 270, 280, 290, 300]);
+
+    const plan = await createPlan(admin, user._id.toString(), {
+      totalOrders: 5,
+    });
+
+    const res = await request(app)
+      .post(`/api/orders/plans/${plan._id}/generate`)
+      .set("Authorization", `Bearer ${makeToken(admin)}`)
+      .send({});
+
+    expect(res.status).toBe(201);
+
+    const tasks = await Task.find({ userId: user._id }).sort({
+      orderNumber: 1,
+    });
+    expect(tasks).toHaveLength(5);
+
+    for (const task of tasks) {
+      const price = parseFloat(task.price.toString());
+      expect(price).toBeGreaterThanOrEqual(240);
+      expect(price).toBeLessThanOrEqual(300);
+      expect(parseFloat(task.commission.toString())).toBeCloseTo(
+        price * 0.005,
+        2,
+      );
+      expect(task.isLuckyOrder).toBe(false);
+    }
+
+    const updated = await OrderPlan.findById(plan._id);
+    expect(updated.status).toBe("generated");
+    expect(updated.initialDeposit).toBeNull();
+    expect(updated.initialDepositTxId).toBeNull();
+    expect(parseFloat(updated.currentBase.toString())).toBeCloseTo(300, 2);
+  });
+
+  it("rejects a user who has never deposited", async () => {
+    const admin = await createUser("admin");
+    const user = await createUser("user", { balance: "300.00" });
+    await seedProducts([240, 250, 260, 270, 280, 290, 300]);
+
+    const plan = await createPlan(admin, user._id.toString(), {
+      totalOrders: 5,
+    });
+
+    const res = await request(app)
+      .post(`/api/orders/plans/${plan._id}/generate`)
+      .set("Authorization", `Bearer ${makeToken(admin)}`)
+      .send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("first deposit");
+  });
+
+  it("rejects a user with an empty balance", async () => {
+    const admin = await createUser("admin");
+    const user = await createUser();
+    await makeDeposit(user._id, "500.00");
+    await seedProducts([240, 250, 260, 270, 280, 290, 300]);
+
+    const plan = await createPlan(admin, user._id.toString(), {
+      totalOrders: 5,
+    });
+
+    const res = await request(app)
+      .post(`/api/orders/plans/${plan._id}/generate`)
+      .set("Authorization", `Bearer ${makeToken(admin)}`)
+      .send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("balance");
+  });
+
+  it("generates lucky positions from the balance base", async () => {
+    const admin = await createUser("admin");
+    const user = await createUser("user", { balance: "300.00" });
+    await makeDeposit(user._id, "500.00");
+    await seedProducts([
+      240, 250, 260, 270, 280, 290, 300, 310, 320, 330, 340, 350,
+    ]);
+
+    const plan = await createPlan(admin, user._id.toString(), {
+      totalOrders: 5,
+      body: {
+        luckyPositions: [
+          {
+            orderNumber: 2,
+            requiredDeposit: "50.00",
+            luckyCommission: "5.00",
+          },
+        ],
+      },
+    });
+
+    const res = await request(app)
+      .post(`/api/orders/plans/${plan._id}/generate`)
+      .set("Authorization", `Bearer ${makeToken(admin)}`)
+      .send({});
+
+    expect(res.status).toBe(201);
+
+    const tasks = await Task.find({ userId: user._id }).sort({
+      orderNumber: 1,
+    });
+    expect(tasks).toHaveLength(5);
+
+    // Order 1 band = balance 300 ရဲ့ 80–100% = [240, 300]
+    const first = tasks.find((t) => t.orderNumber === 1);
+    const firstPrice = parseFloat(first.price.toString());
+    expect(firstPrice).toBeGreaterThanOrEqual(240);
+    expect(firstPrice).toBeLessThanOrEqual(300);
+
+    // Lucky order 2 နဲ့ နောက်ပိုင်း base = 300 + 50 = 350
+    const lucky = tasks.find((t) => t.orderNumber === 2);
+    expect(lucky.isLuckyOrder).toBe(true);
+    const luckyPrice = parseFloat(lucky.price.toString());
+    expect(luckyPrice).toBeGreaterThanOrEqual(280);
+    expect(luckyPrice).toBeLessThanOrEqual(350);
+
+    for (const task of tasks.filter((t) => t.orderNumber > 2)) {
+      const price = parseFloat(task.price.toString());
+      expect(price).toBeGreaterThanOrEqual(280);
+      expect(price).toBeLessThanOrEqual(350);
+    }
+
+    const updated = await OrderPlan.findById(plan._id);
+    expect(updated.initialDepositTxId).toBeNull();
+    expect(parseFloat(updated.currentBase.toString())).toBeCloseTo(300, 2);
+  });
+});
+
 describe("Plan deletion (DELETE /api/orders/plans/:id)", () => {
   it("admin can delete a draft plan", async () => {
     const admin = await createUser("admin");
@@ -1335,5 +1530,169 @@ describe("Withdraw gate", () => {
         password: "password123",
       });
     expect(res.status).toBe(201);
+  });
+});
+
+describe("Round history stays hidden on the user side", () => {
+  it("hides the finished round from every user endpoint while keeping its rows", async () => {
+    const admin = await createUser("admin");
+    const user = await createUser();
+
+    const { planId } = await setupGeneratedPlan(admin, user, { totalOrders: 1 });
+    const firstRoundTask = await Task.findOne({ orderPlanId: planId });
+
+    await completeTask(user, firstRoundTask._id.toString());
+    expect(await OrderPlan.findById(planId)).toMatchObject({
+      status: "completed",
+    });
+
+    // Before round 2 the finished order is still on the user's own list.
+    let res = await request(app)
+      .get("/api/tasks/orders")
+      .set("Authorization", `Bearer ${makeToken(user)}`);
+    expect(res.status).toBe(200);
+    expect(res.body.tasks).toHaveLength(1);
+
+    res = await request(app)
+      .get("/api/tasks/my-tasks")
+      .set("Authorization", `Bearer ${makeToken(user)}`);
+    expect(res.body.tasks).toHaveLength(1);
+
+    // Admin opens round 2 — even before generating it the old round is gone
+    // from the user side.
+    const secondPlan = await createPlan(admin, user._id.toString(), {
+      totalOrders: 3,
+    });
+
+    const userSide = await Promise.all([
+      request(app)
+        .get("/api/tasks/orders")
+        .set("Authorization", `Bearer ${makeToken(user)}`),
+      request(app)
+        .get("/api/tasks/my-tasks")
+        .set("Authorization", `Bearer ${makeToken(user)}`),
+      request(app)
+        .get("/api/tasks/summary")
+        .set("Authorization", `Bearer ${makeToken(user)}`),
+    ]);
+
+    for (const read of userSide.slice(0, 2)) {
+      expect(read.status).toBe(200);
+      expect(
+        read.body.tasks.some((task) => task.orderPlanId === String(planId)),
+      ).toBe(false);
+      expect(read.body.tasks).toHaveLength(0);
+    }
+
+    expect(userSide[2].body.summary.completedCount).toBe(0);
+    expect(userSide[2].body.summary.totalOrderNumber).toBe(3);
+
+    // Nothing is deleted — round 1 keeps its row, its plan and its money.
+    const kept = await Task.findById(firstRoundTask._id);
+    expect(kept).not.toBeNull();
+    expect(kept.status).toBe("completed");
+    expect(kept.orderPlanId.toString()).toBe(String(planId));
+    expect(await OrderPlan.countDocuments({ userId: user._id })).toBe(2);
+
+    // Admin still sees the whole history.
+    const adminRead = await request(app)
+      .get(`/api/tasks/user/${user._id}`)
+      .set("Authorization", `Bearer ${makeToken(admin)}`);
+    expect(adminRead.status).toBe(200);
+    expect(
+      adminRead.body.tasks.some((task) =>
+        String(task.orderPlanId) === String(planId),
+      ),
+    ).toBe(true);
+
+    // ...and once round 2 is generated it is the only round the user sees.
+    const secondDeposit = await makeDeposit(user._id, "500.00");
+    const generateRes = await request(app)
+      .post(`/api/orders/plans/${secondPlan._id}/generate`)
+      .set("Authorization", `Bearer ${makeToken(admin)}`)
+      .send({ depositTransactionId: secondDeposit._id.toString() });
+    expect(generateRes.status).toBe(201);
+
+    const afterGenerate = await request(app)
+      .get("/api/tasks/orders")
+      .set("Authorization", `Bearer ${makeToken(user)}`);
+    expect(afterGenerate.status).toBe(200);
+    expect(afterGenerate.body.tasks).toHaveLength(0);
+    expect(
+      await Task.countDocuments({
+        userId: user._id,
+        status: "completed",
+      }),
+    ).toBe(1);
+  });
+});
+
+describe("Generation survives a legacy database", () => {
+  it("turns a legacy unique task index into 409 with the migration command", async () => {
+    const admin = await createUser("admin");
+    const user = await createUser();
+
+    const { planId } = await setupGeneratedPlan(admin, user, { totalOrders: 2 });
+    const depositTx = await makeDeposit(user._id, "500.00");
+
+    // Round 1 is finished, so the admin may open round 2.
+    await Task.updateMany({ orderPlanId: planId }, { $set: { status: "completed" } });
+    await OrderPlan.updateOne({ _id: planId }, { $set: { status: "completed" } });
+
+    // The database still carries the old (userId, orderNumber) unique index.
+    const indexes = await Task.collection.indexes();
+    const current = indexes.find(
+      (index) => index.name === "userId_1_orderPlanId_1_orderNumber_1",
+    );
+    await Task.collection.dropIndex(current.name);
+    await Task.collection.createIndex(
+      { userId: 1, orderNumber: 1 },
+      { unique: true, name: "userId_1_orderNumber_1" },
+    );
+
+    try {
+      const secondPlan = await createPlan(admin, user._id.toString(), {
+        totalOrders: 2,
+      });
+      const secondDeposit = await makeDeposit(user._id, "500.00");
+
+      const res = await request(app)
+        .post(`/api/orders/plans/${secondPlan._id}/generate`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ depositTransactionId: secondDeposit._id.toString() });
+
+      expect(res.status).toBe(409);
+      expect(res.body.message).toMatch(/migrate-task-index\.js/);
+    } finally {
+      await Task.collection.dropIndex("userId_1_orderNumber_1").catch(() => {});
+      await Task.syncIndexes();
+    }
+  });
+
+  it("skips catalog products without a usable price instead of crashing", async () => {
+    const admin = await createUser("admin");
+    const user = await createUser();
+    await seedProducts(range400to500);
+
+    const plan = await createPlan(admin, user._id.toString(), { totalOrders: 2 });
+    const depositTx = await makeDeposit(user._id, "500.00");
+
+    await Product.collection.insertOne({
+      name: "Product without price",
+      code: "NOPRICE",
+      category: "Electronics",
+    });
+
+    const res = await request(app)
+      .post(`/api/orders/plans/${plan._id}/generate`)
+      .set("Authorization", `Bearer ${makeToken(admin)}`)
+      .send({ depositTransactionId: depositTx._id.toString() });
+
+    expect(res.status).toBe(201);
+    const tasks = await Task.find({ orderPlanId: plan._id });
+    expect(tasks).toHaveLength(2);
+    for (const task of tasks) {
+      expect(task.price.toString()).not.toBe("undefined");
+    }
   });
 });

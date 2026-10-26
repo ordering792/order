@@ -158,6 +158,102 @@ exports.adminList = asyncHandler(async (req, res) => {
   });
 });
 
+// Plans page အတွက် user တစ်ခုလုံးရဲ့ deposit အခြေပြန်ကို တစ်ခါတည်း ပြန်ပေးမယ်။
+// adminList က "အသစ်ဆုံး 100 ခု" ပဲ ပြောင်းလဲနိုင်လို့ အဟောင်း deposit တွေ ကြောင်း
+// ကြောင်း ပျောက်နေတယ် — ဒါကြောင့် "No accepted deposit" လို့ ပြသမယ့် အခြေပြန်အမှားတစ်ခု ဖြစ်တယ်။
+exports.adminDepositSummary = asyncHandler(async (req, res) => {
+  const userIds = [
+    ...new Set(
+      String(req.query.userIds || "")
+        .split(",")
+        .map((value) => value.trim())
+        .filter((value) => mongoose.isValidObjectId(value)),
+    ),
+  ].slice(0, 100);
+
+  if (userIds.length === 0) {
+    return res.json({ deposits: [] });
+  }
+
+  const filter = {
+    userId: { $in: userIds },
+    type: "deposit",
+    status: { $in: ["accepted", "pending"] },
+  };
+
+  // Owner က ကိုယ့် downline မဟုတ်တဲ့ user ကို မမြင်ရဘူး။
+  let scopedIds = userIds;
+
+  if (req.user.role === "owner") {
+    const ownerUserIds = await User.find({ ownerId: req.user._id }).distinct(
+      "_id",
+    );
+    const allowed = new Set(ownerUserIds.map((id) => String(id)));
+    scopedIds = userIds.filter((id) => allowed.has(id));
+    filter.userId = { $in: scopedIds };
+  }
+
+  // Balance round အတွက် user ရဲ့ လက်ရှိ balance — owner scope အတွင်းပဲ ပြမယ်။
+  const balanceUsers = await User.find({ _id: { $in: scopedIds } })
+    .select("balance")
+    .lean();
+  const balanceByUser = new Map(
+    balanceUsers.map((user) => [
+      String(user._id),
+      user.balance ? String(user.balance) : "0.00",
+    ]),
+  );
+
+  const transactions = await Transaction.find(filter)
+    .sort({ createdAt: -1, _id: -1 })
+    .limit(500)
+    .select("userId amount status allocation");
+
+  // Round တစ်ခုမှာ အသုံးပြုပြီးသား deposit တွေကို အသစ် round အတွက်
+  // ပြန်သုံးလို့ မရဘူး။
+  const usedDepositIds = new Set(
+    (
+      await OrderPlan.find({
+        initialDepositTxId: { $in: transactions.map((tx) => tx._id) },
+      })
+        .select("initialDepositTxId")
+        .lean()
+    ).map((plan) => String(plan.initialDepositTxId)),
+  );
+
+  const byUser = new Map(
+    userIds.map((id) => [
+      id,
+      {
+        userId: id,
+        accepted: null,
+        freeAccepted: null,
+        pending: [],
+        balance: balanceByUser.get(id) ?? "0.00",
+      },
+    ]),
+  );
+
+  for (const tx of transactions) {
+    const entry = byUser.get(String(tx.userId));
+    if (!entry) continue;
+
+    const deposit = { _id: String(tx._id), amount: String(tx.amount) };
+
+    if (tx.status === "accepted") {
+      if (!entry.accepted) entry.accepted = deposit;
+
+      const used =
+        usedDepositIds.has(String(tx._id)) || Boolean(tx.allocation);
+      if (!used && !entry.freeAccepted) entry.freeAccepted = deposit;
+    } else if (entry.pending.length < 5) {
+      entry.pending.push(deposit);
+    }
+  }
+
+  res.json({ deposits: [...byUser.values()] });
+});
+
 exports.adminAccept = asyncHandler(async (req, res) => {
   const { id } = req.params;
 

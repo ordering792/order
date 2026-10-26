@@ -43,7 +43,12 @@ export const adminOrdersDict: Dict = {
     "admin.plans.orderCountHint": "How many orders this user will receive (1-500).",
     "admin.plans.depositReady": "Deposit ready",
     "admin.plans.depositMissing": "No accepted deposit",
+    "admin.plans.depositUsed": "Deposit already used",
     "admin.plans.pendingDeposit": "Pending deposit",
+    "admin.plans.balanceReady": "Balance ready",
+    "admin.plans.balanceEmpty": "User balance is empty — accept a deposit first",
+    "admin.plans.balanceBase":
+      "No free deposit — the new round will use the user's balance {amount}: each order picks a product between {lo} and {hi}.",
   },
   es: {
     "admin.nav.dashboard": "Panel",
@@ -87,7 +92,12 @@ export const adminOrdersDict: Dict = {
     "admin.plans.orderCountHint": "Cuántos pedidos recibirá este usuario (1-500).",
     "admin.plans.depositReady": "Depósito listo",
     "admin.plans.depositMissing": "Sin depósito aceptado",
+    "admin.plans.depositUsed": "Depósito ya utilizado",
     "admin.plans.pendingDeposit": "Depósito pendiente",
+    "admin.plans.balanceReady": "Saldo listo",
+    "admin.plans.balanceEmpty": "El saldo del usuario está vacío: acepta un depósito primero",
+    "admin.plans.balanceBase":
+      "Sin depósito libre: la nueva ronda usará el saldo del usuario {amount}: cada pedido elige un producto entre {lo} y {hi}.",
   },
   pt: {
     "admin.nav.dashboard": "Painel",
@@ -131,7 +141,12 @@ export const adminOrdersDict: Dict = {
     "admin.plans.orderCountHint": "Quantos pedidos este usuário receberá (1-500).",
     "admin.plans.depositReady": "Depósito pronto",
     "admin.plans.depositMissing": "Sem depósito aceito",
+    "admin.plans.depositUsed": "Depósito já utilizado",
     "admin.plans.pendingDeposit": "Depósito pendente",
+    "admin.plans.balanceReady": "Saldo pronto",
+    "admin.plans.balanceEmpty": "O saldo do usuário está vazio — aceite um depósito primeiro",
+    "admin.plans.balanceBase":
+      "Sem depósito livre: a nova rodada usará o saldo do usuário {amount}: cada pedido escolhe um produto entre {lo} e {hi}.",
   },
   ar: {
     "admin.nav.dashboard": "اللوحة الرئيسية",
@@ -175,7 +190,12 @@ export const adminOrdersDict: Dict = {
     "admin.plans.orderCountHint": "كم عدد الطلبات التي سيستلمها هذا المستخدم (1-500).",
     "admin.plans.depositReady": "الإيداع جاهز",
     "admin.plans.depositMissing": "لا يوجد إيداع مقبول",
+    "admin.plans.depositUsed": "تم استخدام الإيداع بالفعل",
     "admin.plans.pendingDeposit": "إيداع معلّق",
+    "admin.plans.balanceReady": "الرصيد جاهز",
+    "admin.plans.balanceEmpty": "رصيد المستخدم فارغ — اقبل إيداعاً أولاً",
+    "admin.plans.balanceBase":
+      "لا يوجد إيداع حر — ستعمل الجولة الجديدة برصيد المستخدم {amount}: كل طلب يختار منتجاً بين {lo} و{hi}.",
   },
   hi: {
     "admin.nav.dashboard": "डैशबोर्ड",
@@ -219,7 +239,12 @@ export const adminOrdersDict: Dict = {
     "admin.plans.orderCountHint": "इस उपयोगकर्ता को कितने ऑर्डर मिलेंगे (1-500)।",
     "admin.plans.depositReady": "जमा तैयार",
     "admin.plans.depositMissing": "कोई स्वीकृत जमा नहीं",
+    "admin.plans.depositUsed": "जमा पहले ही उपयोग किया जा चुका है",
     "admin.plans.pendingDeposit": "लंबित जमा",
+    "admin.plans.balanceReady": "बैलेंस तैयार",
+    "admin.plans.balanceEmpty": "उपयोगकर्ता का बैलेंस खाली है — पहले जमा स्वीकारें",
+    "admin.plans.balanceBase":
+      "कोई मुफ़्त जमा नहीं — नया राउंड उपयोगकर्ता के बैलेंस {amount} से चलेगा: हर ऑर्डर {lo} और {hi} के बीच उत्पाद चुनेगा।",
   },
   ja: {
     "admin.nav.dashboard": "ダッシュボード",
@@ -263,7 +288,12 @@ export const adminOrdersDict: Dict = {
     "admin.plans.orderCountHint": "このユーザーが受け取る注文数 (1-500)。",
     "admin.plans.depositReady": "入金の準備完了",
     "admin.plans.depositMissing": "承認された入金がありません",
+    "admin.plans.depositUsed": "入金は既に使用されています",
     "admin.plans.pendingDeposit": "保留中の入金",
+    "admin.plans.balanceReady": "残高の準備完了",
+    "admin.plans.balanceEmpty": "ユーザーの残高が空です。先に入金を承認してください。",
+    "admin.plans.balanceBase":
+      "未使用の入金がないため、新しいラウンドはユーザーの残高 {amount} を使用します。各注文は {lo}〜{hi} の商品を選びます。",
   },
   th: {
     "admin.nav.dashboard": "แดชบอร์ด",
@@ -307,7 +337,12 @@ export const adminOrdersDict: Dict = {
     "admin.plans.orderCountHint": "ผู้ใช้รายนี้จะได้รับคำสั่งซื้อกี่รายการ (1-500)",
     "admin.plans.depositReady": "ฝากพร้อมแล้ว",
     "admin.plans.depositMissing": "ยังไม่มีการอนุมัติฝาก",
+    "admin.plans.depositUsed": "ฝากนี้ถูกใช้ไปแล้ว",
     "admin.plans.pendingDeposit": "ฝากค้างรอการอนุมัติ",
+    "admin.plans.balanceReady": "ยอดเงินพร้อมแล้ว",
+    "admin.plans.balanceEmpty": "ยอดเงินของผู้ใช้ว่างเปล่า — กรุณาอนุมัติฝากก่อน",
+    "admin.plans.balanceBase":
+      "ไม่มีฝากว่าง — รอบใหม่จะใช้ยอดเงินของผู้ใช้ {amount}: แต่ละคำสั่งซื้อเลือกสินค้าระหว่าง {lo} ถึง {hi}",
   },
   ko: {
     "admin.nav.dashboard": "대시보드",
@@ -351,7 +386,12 @@ export const adminOrdersDict: Dict = {
     "admin.plans.orderCountHint": "이 사용자가 받을 주문 수입니다 (1-500).",
     "admin.plans.depositReady": "입금 준비 완료",
     "admin.plans.depositMissing": "승인된 입금 없음",
+    "admin.plans.depositUsed": "이미 사용된 입금입니다",
     "admin.plans.pendingDeposit": "대기 중인 입금",
+    "admin.plans.balanceReady": "잔액 준비 완료",
+    "admin.plans.balanceEmpty": "사용자 잔액이 비어 있습니다 — 먼저 입금을 승인하세요",
+    "admin.plans.balanceBase":
+      "사용 가능한 입금이 없습니다 — 새 라운드는 사용자 잔액 {amount}을 사용합니다: 각 주문은 {lo}~{hi} 사이의 상품을 선택합니다.",
   },
   zh: {
     "admin.nav.dashboard": "仪表盘",
@@ -395,6 +435,11 @@ export const adminOrdersDict: Dict = {
     "admin.plans.orderCountHint": "该用户将获得多少笔订单（1-500）。",
     "admin.plans.depositReady": "充值已就绪",
     "admin.plans.depositMissing": "没有已通过的充值",
+    "admin.plans.depositUsed": "该充值已被使用",
     "admin.plans.pendingDeposit": "待处理充值",
+    "admin.plans.balanceReady": "余额已就绪",
+    "admin.plans.balanceEmpty": "用户余额为空 — 请先通过充值",
+    "admin.plans.balanceBase":
+      "没有可用充值 — 新一轮将使用用户余额 {amount}：每笔订单选择 {lo} 至 {hi} 之间的商品。",
   },
 };
