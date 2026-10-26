@@ -5,6 +5,7 @@ const Product = require("../models/Product");
 const Transaction = require("../models/Transaction");
 const OrderPlan = require("../models/OrderPlan");
 const asyncHandler = require("../utils/asyncHandler");
+const { escapeRegExp } = require("../utils/regex");
 
 const listUsersSchema = z.object({
   search: z.string().max(100).optional(),
@@ -52,8 +53,7 @@ exports.listUsers = asyncHandler(async (req, res) => {
   }
 
   if (search) {
-    const safe = search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const rx = new RegExp(safe, "i");
+    const rx = new RegExp(escapeRegExp(search), "i");
     filter.$and = [
       ...(filter.$and ?? []),
       { $or: [{ name: rx }, { phone: rx }, { invitationCode: rx }] },
@@ -159,73 +159,88 @@ exports.updateUser = asyncHandler(async (req, res) => {
   });
 });
 
+const STATS_CACHE_TTL_MS = 15000;
+const statsCache = new Map();
+
 exports.stats = asyncHandler(async (req, res) => {
   const isOwner = req.user.role === "owner";
-  const userIds = isOwner ? await ownerUserIds(req.user._id) : null;
+  const cacheKey = `${req.user.role}:${req.user._id}`;
+  const cached = statsCache.get(cacheKey);
 
-  const scopeUsers = (extra = {}) => {
-    if (!isOwner) return extra;
-    return { ...extra, userId: { $in: userIds } };
-  };
+  // cache hit မှာ ownerUserIds (distinct) ကို မ run သင့်ဘူး — အဲဒါက
+  // ဒီ endpoint ရဲ့ အထဲက အစျေးအကြီးဆုံး query ဖြစ်တယ်။
+  if (cached && cached.expiresAt > Date.now()) {
+    return res.json({ stats: cached.stats });
+  }
+
+  const userIds = isOwner ? await ownerUserIds(req.user._id) : null;
 
   const scopeTx = (extra = {}) => {
     if (!isOwner) return extra;
     return { ...extra, userId: { $in: userIds } };
   };
 
-  const [
-    totalUsers,
-    totalOwners,
-    totalProducts,
-    pendingDeposits,
-    pendingWithdraws,
-    acceptedVolume,
-    totalPlans,
-    generatedPlans,
-    completedPlans,
-  ] = await Promise.all([
+  const [userStats, productCount, transactionStats, planStats] = await Promise.all([
     isOwner
       ? User.countDocuments({ ownerId: req.user._id })
-      : User.countDocuments({}),
-    isOwner ? User.countDocuments({}) : User.countDocuments({ role: "owner" }),
+      : User.aggregate([
+          {
+            $group: {
+              _id: null,
+              totalUsers: { $sum: 1 },
+              totalOwners: { $sum: { $cond: [{ $eq: ["$role", "owner"] }, 1, 0] } },
+            },
+          },
+        ]),
     Product.countDocuments({}),
-    Transaction.countDocuments(scopeTx({ type: "deposit", status: "pending" })),
-    Transaction.countDocuments(scopeTx({ type: "withdraw", status: "pending" })),
     Transaction.aggregate([
-      {
-        $match: scopeTx({ type: "deposit", status: "accepted" }),
-      },
+      { $match: scopeTx({ type: { $in: ["deposit", "withdraw"] } }) },
       {
         $group: {
           _id: null,
-          total: { $sum: "$amount" },
+          pendingDeposits: {
+            $sum: { $cond: [{ $and: [{ $eq: ["$type", "deposit"] }, { $eq: ["$status", "pending"] }] }, 1, 0] },
+          },
+          pendingWithdraws: {
+            $sum: { $cond: [{ $and: [{ $eq: ["$type", "withdraw"] }, { $eq: ["$status", "pending"] }] }, 1, 0] },
+          },
+          acceptedVolume: {
+            $sum: { $cond: [{ $and: [{ $eq: ["$type", "deposit"] }, { $eq: ["$status", "accepted"] }] }, "$amount", 0] },
+          },
         },
       },
     ]),
-    isOwner
-      ? OrderPlan.countDocuments({ userId: { $in: userIds } })
-      : OrderPlan.countDocuments({}),
-    isOwner
-      ? OrderPlan.countDocuments({ userId: { $in: userIds }, status: "generated" })
-      : OrderPlan.countDocuments({ status: "generated" }),
-    isOwner
-      ? OrderPlan.countDocuments({ userId: { $in: userIds }, status: "completed" })
-      : OrderPlan.countDocuments({ status: "completed" }),
+    OrderPlan.aggregate([
+      { $match: isOwner ? { userId: { $in: userIds } } : {} },
+      {
+        $group: {
+          _id: null,
+          totalPlans: { $sum: 1 },
+          generatedPlans: { $sum: { $cond: [{ $eq: ["$status", "generated"] }, 1, 0] } },
+          completedPlans: { $sum: { $cond: [{ $eq: ["$status", "completed"] }, 1, 0] } },
+        },
+      },
+    ]),
   ]);
 
-  res.json({
-    stats: {
-      totalUsers,
-      totalOwners,
-      totalProducts,
-      pendingDeposits,
-      pendingWithdraws,
-      acceptedVolume: acceptedVolume[0]?.total ?? 0,
-      totalPlans,
-      generatedPlans,
-      completedPlans,
-    },
+  const stats = {
+    totalUsers: isOwner ? userStats : userStats[0]?.totalUsers ?? 0,
+    totalOwners: isOwner ? 1 : userStats[0]?.totalOwners ?? 0,
+    totalProducts: productCount,
+    pendingDeposits: transactionStats[0]?.pendingDeposits ?? 0,
+    pendingWithdraws: transactionStats[0]?.pendingWithdraws ?? 0,
+    acceptedVolume: transactionStats[0]?.acceptedVolume ?? 0,
+    totalPlans: planStats[0]?.totalPlans ?? 0,
+    generatedPlans: planStats[0]?.generatedPlans ?? 0,
+    completedPlans: planStats[0]?.completedPlans ?? 0,
+  };
+
+  statsCache.set(cacheKey, {
+    stats,
+    expiresAt: Date.now() + STATS_CACHE_TTL_MS,
   });
+
+  res.json({ stats });
 });
 
 exports.ownerUserIds = ownerUserIds;

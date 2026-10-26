@@ -10,8 +10,20 @@ describe("server configuration validation", () => {
   it("passes when the required values are present", () => {
     process.env.JWT_SECRET = "a".repeat(48);
     process.env.MONGODB_URI = "mongodb://localhost:27017/test";
+    process.env.CLIENT_ORIGIN = "http://localhost:3000";
+    process.env.IMAGEKIT_PUBLIC_KEY = "public_test";
+    process.env.IMAGEKIT_PRIVATE_KEY = "private_test";
+    process.env.IMAGEKIT_URL_ENDPOINT = "https://ik.imagekit.io/test";
 
     expect(() => assertEnv()).not.toThrow();
+  });
+
+  it("fails when CLIENT_ORIGIN is missing (CORS would block every origin)", () => {
+    process.env.JWT_SECRET = "a".repeat(48);
+    process.env.MONGODB_URI = "mongodb://localhost:27017/test";
+    delete process.env.CLIENT_ORIGIN;
+
+    expect(() => assertEnv()).toThrow(/CLIENT_ORIGIN/);
   });
 
   it("fails when JWT_SECRET is missing", () => {

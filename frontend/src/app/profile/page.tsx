@@ -1,7 +1,7 @@
 // src/app/profile/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   User, Copy, CheckCircle, DollarSign, Wallet, MessageSquare,
@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../lib/auth";
 import { useT } from "../../lib/i18n";
+import { moneyNumber } from "../../lib/money";
 
 function MenuItem({ icon, label, href }: { icon: React.ReactNode, label: string, href: string }) {
   return (
@@ -26,16 +27,24 @@ function MenuItem({ icon, label, href }: { icon: React.ReactNode, label: string,
 }
 
 export default function ProfilePage() {
-  const { user, logout, refreshUser } = useAuth();
+  const { user, logout } = useAuth();
   const t = useT();
   const [toast, setToast] = useState<{ show: boolean; message: string }>({ show: false, message: "" });
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [logoutCountdown, setLogoutCountdown] = useState(3);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const redirectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Balance ကို ချက်ချင်းစစ်ပြီး မှန်ကန်ပြန်ရမယ် (order complete ပြီးလို့ commission ပေါင်းသွားရင်)
+  // Timer တွေ cleanup မလုပ်ရင် page ပြောင်းပြီး ၃.၅ စက္ကန့်အကြာမှာ
+  // logout + /login redirect အလိုအလျောက် ဖြစ်သွားမယ်။
   useEffect(() => {
-    refreshUser();
-  }, [refreshUser]);
+    return () => {
+      if (countdownRef.current) clearInterval(countdownRef.current);
+      if (redirectRef.current) clearTimeout(redirectRef.current);
+    };
+  }, []);
+
+  // Balance ကို auth provider ကနေ ယူပါတယ် — mount တိုင်း /auth/me ထပ်ခေါ်မလို
 
   const showToast = (message: string) => {
     setToast({ show: true, message });
@@ -57,15 +66,16 @@ export default function ProfilePage() {
       setLogoutCountdown(countdown);
       if (countdown <= 0) {
         clearInterval(interval);
-        setTimeout(() => {
+        redirectRef.current = setTimeout(() => {
           logout();
           window.location.href = "/login";
         }, 500);
       }
     }, 1000);
+    countdownRef.current = interval;
   };
 
-  const totalAssets = user?.balance ? parseFloat(user.balance) : 0;
+  const totalAssets = moneyNumber(user?.balance);
 
   return (
     <div className="bg-[#1e293b] flex justify-center items-center min-h-screen m-0 p-0 overflow-hidden">

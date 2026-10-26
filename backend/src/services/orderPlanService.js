@@ -4,13 +4,8 @@ const Task = require("../models/Task");
 const Product = require("../models/Product");
 const OrderPlan = require("../models/OrderPlan");
 const { toCents } = require("../utils/money");
+const { httpError } = require("../utils/httpError");
 const { emitToAdmins } = require("../socket");
-
-function httpError(status, message) {
-  const err = new Error(message);
-  err.status = status;
-  return err;
-}
 
 async function assertTargetUser(userId, actor) {
   const user = await User.findById(userId);
@@ -214,6 +209,8 @@ async function getPlanById(planId, actor) {
 
 async function listPlans(filters) {
   const query = {};
+  const page = Math.max(1, Number(filters.page || 1));
+  const limit = Math.min(100, Math.max(1, Number(filters.limit || 20)));
 
   if (filters.status) {
     query.status = filters.status;
@@ -230,9 +227,21 @@ async function listPlans(filters) {
     query.userId = { $in: ownerUserIds };
   }
 
-  return OrderPlan.find(query)
-    .populate("userId", "name phone")
-    .sort({ createdAt: -1 });
+  const [plans, total] = await Promise.all([
+    OrderPlan.find(query)
+      .populate("userId", "name phone")
+      .sort({ createdAt: -1, _id: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit),
+    OrderPlan.countDocuments(query),
+  ]);
+
+  return {
+    plans,
+    total,
+    page,
+    pages: Math.max(1, Math.ceil(total / limit)),
+  };
 }
 
 module.exports = {
@@ -242,7 +251,6 @@ module.exports = {
   getPlanById,
   listPlans,
   deletePlan,
-  httpError,
   assertTargetUser,
   assertPlanReadable,
 };

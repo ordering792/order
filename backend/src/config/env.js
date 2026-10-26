@@ -30,6 +30,36 @@ function assertEnv() {
     problems.push("MONGODB_URI is missing");
   }
 
+  // CLIENT_ORIGIN မထည့်ရင် CORS က origin အားလုံးကို ပိတ်မယ် —
+  // frontend က "Network error" ပဲပြပြီး cause မသိရလို့ boot မှာပဲ တားမယ်။
+  const origins = (process.env.CLIENT_ORIGIN || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  if (origins.length === 0) {
+    problems.push(
+      "CLIENT_ORIGIN is missing — set the comma-separated frontend origins, e.g. https://app.up.railway.app,https://admin.up.railway.app",
+    );
+  } else if (
+    origins.some((origin) => origin.startsWith("http://localhost")) &&
+    process.env.NODE_ENV === "production"
+  ) {
+    problems.push("CLIENT_ORIGIN still contains a localhost origin in production");
+  }
+
+  const imageKitValues = [
+    process.env.IMAGEKIT_PUBLIC_KEY,
+    process.env.IMAGEKIT_PRIVATE_KEY,
+    process.env.IMAGEKIT_URL_ENDPOINT,
+  ];
+
+  if (imageKitValues.some((value) => !value || !value.trim())) {
+    problems.push(
+      "IMAGEKIT_PUBLIC_KEY, IMAGEKIT_PRIVATE_KEY, and IMAGEKIT_URL_ENDPOINT are required",
+    );
+  }
+
   if (problems.length > 0) {
     throw new Error(`Invalid server configuration:\n - ${problems.join("\n - ")}`);
   }

@@ -13,9 +13,7 @@ const {
   DEFAULT_LANGUAGE,
   isSupportedLanguage,
 } = require("../config/languages");
-
-const DEFAULT_INVITATION_CODE =
-  process.env.DEFAULT_INVITATION_CODE || "MASTER2024";
+const { DEFAULT_INVITATION_CODE } = require("../config/invitation");
 
 const registerSchema = z.object({
   name: z.string().min(1).max(100),
@@ -214,7 +212,22 @@ exports.changePassword = asyncHandler(async (req, res) => {
     });
   }
 
-  const { oldPassword, newPassword } = parsed.data;
+  // register/login နှစ်ခုလုံး normalizePassword သုံးထားလို့ ဒီမှာ မလုပ်ရင်
+  // old password mismatch (400) သို့မဟုတ် ပြောင်းပြီးနောက် login မရတဲ့
+  // silent lockout ဖြစ်တယ်။ trim ပြီးမှ ပြန်စစ်မယ်။
+  const normalized = changePasswordSchema.safeParse({
+    oldPassword: normalizePassword(parsed.data.oldPassword),
+    newPassword: normalizePassword(parsed.data.newPassword),
+  });
+
+  if (!normalized.success) {
+    return res.status(400).json({
+      message: "Validation failed",
+      errors: normalized.error.issues,
+    });
+  }
+
+  const { oldPassword, newPassword } = normalized.data;
 
   const user = await User.findById(req.user._id).select("+passwordHash");
 

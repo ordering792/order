@@ -11,6 +11,7 @@ import { api, ApiError } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { useT } from "../../lib/i18n";
 import RequireAuth from "../components/RequireAuth";
+import { uploadToImageKit, validateImageFile } from "../../lib/uploadImage";
 
 export default function DepositPage() {
   const { user } = useAuth();
@@ -24,6 +25,7 @@ export default function DepositPage() {
   const [addressSource, setAddressSource] = useState<"owner" | "admin" | null>(null);
   const [orderId, setOrderId] = useState("");
   const [proofImage, setProofImage] = useState<string | null>(null);
+  const [proofUploading, setProofUploading] = useState(false);
   const [toast, setToast] = useState<{ show: boolean; message: string }>({ show: false, message: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -63,14 +65,6 @@ export default function DepositPage() {
     }
   };
 
-  const generateOrderId = () => {
-    const now = new Date();
-    const mm = String(now.getMonth() + 1).padStart(2, "0");
-    const dd = String(now.getDate()).padStart(2, "0");
-    const rand = Math.floor(100000 + Math.random() * 900000);
-    return "EP" + mm + dd + rand;
-  };
-
   const handleProceedToStep2 = () => {
     if (!amount || Number(amount) <= 0) {
       showToast(t("deposit.invalidAmount"));
@@ -80,8 +74,6 @@ export default function DepositPage() {
       showToast(t("deposit.noAddress"));
       return;
     }
-    const newOrderId = generateOrderId();
-    setOrderId(newOrderId);
     setStep(2);
   };
 
@@ -90,14 +82,21 @@ export default function DepositPage() {
     showToast(t("deposit.copied"));
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setProofImage(event.target?.result as string);
-      };
-      reader.readAsDataURL(file);
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      validateImageFile(file, 5 * 1024 * 1024);
+      setProofUploading(true);
+      const url = await uploadToImageKit(file, "deposit-proof");
+      setProofImage(url);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : t("deposit.submitFailed");
+      showToast(message);
+    } finally {
+      setProofUploading(false);
+      e.target.value = "";
     }
   };
 
@@ -106,13 +105,21 @@ export default function DepositPage() {
       showToast(t("deposit.needProof"));
       return;
     }
+    if (proofUploading) {
+      showToast(t("deposit.submitting"));
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      await api.createTransaction({
+      const res = await api.createTransaction({
         type: "deposit",
         amount: Number(amount).toFixed(2),
         proofScreenshot: proofImage,
       });
+      // Reference နံပါတ်ကို server ပြ transaction._id ကနေ ယူတယ် —
+      // client ဖန်တီးတဲ့ id က admin/history မှာ ဘယ်တော့မှ မပေါ်ဘူး။
+      setOrderId(res.transaction._id.slice(-12).toUpperCase());
       setStep(3);
     } catch (err) {
       const message = err instanceof ApiError ? err.message : t("deposit.submitFailed");
@@ -220,15 +227,6 @@ export default function DepositPage() {
 
             <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-2 text-xs">
               <div className="flex justify-between items-center">
-                <span className="text-gray-400">{t("deposit.orderId")}</span>
-                <div className="flex items-center space-x-2">
-                  <span className="font-bold text-gray-800">{orderId}</span>
-                  <button onClick={() => handleCopy(orderId)} className="text-orange-600 bg-orange-50 px-2 py-0.5 rounded font-bold hover:bg-orange-100 transition flex items-center gap-1">
-                    <Copy size={12} /> {t("deposit.copy")}
-                  </button>
-                </div>
-              </div>
-              <div className="flex justify-between items-center border-t border-gray-100 pt-2">
                 <span className="text-gray-400">{t("deposit.amount")}</span>
                 <div className="flex items-center space-x-2">
                   <span className="font-black text-rose-500 text-sm">{displayAmount}</span>
@@ -299,10 +297,12 @@ export default function DepositPage() {
 
               <label
                 htmlFor="proofFile"
-                className={`w-24 h-24 bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:border-[#ff6600] transition relative overflow-hidden group ${proofImage ? 'bg-cover bg-center' : ''}`}
+                className={`w-24 h-24 bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center transition relative overflow-hidden group ${proofImage ? 'bg-cover bg-center' : ''} ${proofUploading ? 'opacity-60 cursor-wait' : 'cursor-pointer hover:border-[#ff6600]'}`}
                 style={proofImage ? { backgroundImage: `url(${proofImage})` } : {}}
               >
-                {!proofImage && (
+                {proofUploading ? (
+                  <span className="text-[10px] text-gray-400 mt-1">Uploading...</span>
+                ) : !proofImage && (
                   <>
                     <Camera className="text-gray-400 group-hover:text-[#ff6600]" size={24} />
                     <span className="text-[10px] text-gray-400 mt-1">{t("deposit.uploadProof")}</span>
@@ -311,8 +311,9 @@ export default function DepositPage() {
                 <input
                   type="file"
                   id="proofFile"
-                  accept="image/*"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
                   className="hidden"
+                  disabled={proofUploading}
                   onChange={handleImageUpload}
                 />
               </label>

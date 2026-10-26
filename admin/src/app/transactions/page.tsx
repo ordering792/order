@@ -10,6 +10,8 @@ export default function AdminTransactionsPage() {
   const [transactions, setTransactions] = useState<ApiTransaction[]>([]);
   const [status, setStatus] = useState("");
   const [type, setType] = useState("");
+  const [page, setPage] = useState(1);
+  const [meta, setMeta] = useState({ page: 1, pages: 1, total: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [rejecting, setRejecting] = useState<ApiTransaction | null>(null);
@@ -19,17 +21,23 @@ export default function AdminTransactionsPage() {
     setLoading(true);
     setError("");
 
-    const query = new URLSearchParams();
-    if (status) query.set("status", status);
-    if (type) query.set("type", type);
-
     api
-      .get<{ transactions: ApiTransaction[] }>(
-        `/transactions/admin${query.toString() ? `?${query}` : ""}`,
-      )
-      .then((res) => setTransactions(res.transactions))
+      .adminListTransactions({
+        status: status || undefined,
+        type: type || undefined,
+        page,
+        limit: 20,
+      })
+      .then((res) => {
+        setTransactions(res.transactions);
+        setMeta({ page: res.page, pages: res.pages, total: res.total });
+      })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
+  }, [status, type, page]);
+
+  useEffect(() => {
+    setPage(1);
   }, [status, type]);
 
   useEffect(load, [load]);
@@ -189,6 +197,7 @@ export default function AdminTransactionsPage() {
                           <img
                             src={tx.proofScreenshot}
                             alt="proof"
+                            loading="lazy"
                             className="h-full w-full object-cover"
                           />
                         </a>
@@ -220,6 +229,28 @@ export default function AdminTransactionsPage() {
             )}
           </tbody>
         </table>
+      </div>
+      <div className="flex items-center justify-between text-xs text-slate-500">
+        <span>{meta.total} transactions</span>
+        <div className="flex items-center gap-2">
+          <button
+            disabled={page <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold disabled:opacity-40"
+          >
+            {t("admin.back")}
+          </button>
+          <span>
+            {meta.page} / {meta.pages}
+          </span>
+          <button
+            disabled={page >= meta.pages}
+            onClick={() => setPage((p) => Math.min(meta.pages, p + 1))}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold disabled:opacity-40"
+          >
+            {t("admin.refresh")}
+          </button>
+        </div>
       </div>
     </div>
   );

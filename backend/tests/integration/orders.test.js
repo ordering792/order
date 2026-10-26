@@ -1275,7 +1275,11 @@ describe("Withdraw gate", () => {
     res = await request(app)
       .post("/api/transactions")
       .set("Authorization", `Bearer ${makeToken(user)}`)
-      .send({ type: "withdraw", amount: "10.00" });
+      .send({
+        type: "withdraw",
+        amount: "10.00",
+        password: "password123",
+      });
     expect(res.status).toBe(409);
     expect(res.body.message).toMatch(/plan/i);
 
@@ -1290,7 +1294,11 @@ describe("Withdraw gate", () => {
     res = await request(app)
       .post("/api/transactions")
       .set("Authorization", `Bearer ${makeToken(user)}`)
-      .send({ type: "withdraw", amount: "10.00" });
+      .send({
+        type: "withdraw",
+        amount: "10.00",
+        password: "password123",
+      });
     expect(res.status).toBe(201);
   });
 
@@ -1307,7 +1315,11 @@ describe("Withdraw gate", () => {
     let res = await request(app)
       .post("/api/transactions")
       .set("Authorization", `Bearer ${makeToken(user)}`)
-      .send({ type: "withdraw", amount: "10.00" });
+      .send({
+        type: "withdraw",
+        amount: "10.00",
+        password: "password123",
+      });
     expect(res.status).toBe(409);
 
     const planless = await createUser();
@@ -1317,7 +1329,11 @@ describe("Withdraw gate", () => {
     res = await request(app)
       .post("/api/transactions")
       .set("Authorization", `Bearer ${makeToken(planless)}`)
-      .send({ type: "withdraw", amount: "10.00" });
+      .send({
+        type: "withdraw",
+        amount: "10.00",
+        password: "password123",
+      });
     expect(res.status).toBe(201);
   });
 });

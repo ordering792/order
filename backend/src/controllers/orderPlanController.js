@@ -24,15 +24,9 @@ const generateSchema = z.object({
   depositTransactionId: z.string().length(24),
 });
 
-async function handleError(res, err) {
-  if (err.status) {
-    return res.status(err.status).json({ message: err.message });
-  }
-
-  return res
-    .status(500)
-    .json({ message: err.message || "Internal server error" });
-}
+// Error handling ကို asyncHandler + app.js global handler က ထားတယ်။
+// ဒီမှာ catch လုပ်ပြီး err.message ကို 500 နဲ့ ပို့ရင် internal (Mongo)
+// message တွေ client ဆီ ထွက်သွားမယ်။
 
 exports.createPlan = asyncHandler(async (req, res) => {
   const parsed = createPlanSchema.safeParse(req.body);
@@ -44,16 +38,12 @@ exports.createPlan = asyncHandler(async (req, res) => {
     });
   }
 
-  try {
-    const plan = await orderPlanService.createPlan(parsed.data, req.user);
+  const plan = await orderPlanService.createPlan(parsed.data, req.user);
 
-    res.status(201).json({
-      message: "Order plan created",
-      plan: orderPlanService.serializePlan(plan),
-    });
-  } catch (err) {
-    await handleError(res, err);
-  }
+  res.status(201).json({
+    message: "Order plan created",
+    plan: orderPlanService.serializePlan(plan),
+  });
 });
 
 exports.myPlan = asyncHandler(async (req, res) => {
@@ -67,19 +57,17 @@ exports.myPlan = asyncHandler(async (req, res) => {
 });
 
 exports.getPlan = asyncHandler(async (req, res) => {
-  try {
-    const plan = await orderPlanService.getPlanById(req.params.id, req.user);
+  const plan = await orderPlanService.getPlanById(req.params.id, req.user);
 
-    res.json({ plan: orderPlanService.serializePlan(plan) });
-  } catch (err) {
-    await handleError(res, err);
-  }
+  res.json({ plan: orderPlanService.serializePlan(plan) });
 });
 
 exports.adminList = asyncHandler(async (req, res) => {
   const filters = {
     status: req.query.status,
     userId: req.query.userId,
+    page: req.query.page,
+    limit: req.query.limit,
   };
 
   // Owner က ကိုယ့် downline user တွေရဲ့ plan တွေကိုသာ မြင်ရမယ်။
@@ -87,10 +75,10 @@ exports.adminList = asyncHandler(async (req, res) => {
     filters.ownerId = req.user._id;
   }
 
-  const plans = await orderPlanService.listPlans(filters);
+  const result = await orderPlanService.listPlans(filters);
 
   res.json({
-    plans: plans.map((plan) => ({
+    plans: result.plans.map((plan) => ({
       ...orderPlanService.serializePlan(plan),
       user: plan.userId
         ? {
@@ -100,6 +88,9 @@ exports.adminList = asyncHandler(async (req, res) => {
           }
         : null,
     })),
+    total: result.total,
+    page: result.page,
+    pages: result.pages,
   });
 });
 
@@ -113,27 +104,19 @@ exports.generate = asyncHandler(async (req, res) => {
     });
   }
 
-  try {
-    const plan = await generateOrders(
-      { planId: req.params.id, ...parsed.data },
-      req.user,
-    );
+  const plan = await generateOrders(
+    { planId: req.params.id, ...parsed.data },
+    req.user,
+  );
 
-    res.status(201).json({
-      message: `${plan.totalOrders} orders generated`,
-      plan: orderPlanService.serializePlan(plan),
-    });
-  } catch (err) {
-    await handleError(res, err);
-  }
+  res.status(201).json({
+    message: `${plan.totalOrders} orders generated`,
+    plan: orderPlanService.serializePlan(plan),
+  });
 });
 
 exports.deletePlan = asyncHandler(async (req, res) => {
-  try {
-    await orderPlanService.deletePlan(req.params.id, req.user);
+  await orderPlanService.deletePlan(req.params.id, req.user);
 
-    res.json({ message: "Plan deleted" });
-  } catch (err) {
-    await handleError(res, err);
-  }
+  res.json({ message: "Plan deleted" });
 });

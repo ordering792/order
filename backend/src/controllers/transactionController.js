@@ -1,17 +1,22 @@
 const { z } = require("zod");
 const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
 const Transaction = require("../models/Transaction");
 const User = require("../models/User");
 const OrderPlan = require("../models/OrderPlan");
 const asyncHandler = require("../utils/asyncHandler");
 const { toCents, decimal, fromCents } = require("../utils/money");
 const { emitToAdmins } = require("../socket");
+const { normalizePassword } = require("../utils/phone");
+const { isImageKitUrl } = require("./uploadController");
 
 const createSchema = z.object({
   type: z.enum(["deposit", "withdraw"]),
   amount: z.string().min(1),
-  // Screenshot က data URL (base64) ဖြစ်လို့ size ကို ကန့်သတ်ထားမယ်။
-  proofScreenshot: z.string().max(2_000_000).optional(),
+  // Screenshot ကို ImageKit URL အဖြစ်သာ လက်ခံမယ် — base64 bytes မသိမ်းတော့ဘူး။
+  proofScreenshot: z.string().max(1000).optional(),
+  // Withdrawal အတွက်သာ — user ရဲ့ login password ကို verify လုပ်မယ်။
+  password: z.string().max(100).optional(),
 });
 
 const rejectSchema = z.object({
@@ -28,7 +33,7 @@ exports.create = asyncHandler(async (req, res) => {
     });
   }
 
-  const { type, amount, proofScreenshot } = parsed.data;
+  const { type, amount, proofScreenshot, password } = parsed.data;
 
   let amountCents;
   try {
@@ -41,7 +46,29 @@ exports.create = asyncHandler(async (req, res) => {
   }
 
   if (type === "withdraw") {
-    const user = await User.findById(req.user._id);
+    const user = await User.findById(req.user._id).select("+passwordHash");
+
+    if (!user) {
+      return res.status(409).json({ message: "User unavailable" });
+    }
+
+    // Login password ကို verify လုပ်မယ် — JWT ရှိရုံနဲ့ withdraw
+    // လုပ်လို့ရတာ မလုံလောက်ဘူး။
+    const withdrawalPassword = normalizePassword(password);
+
+    if (!withdrawalPassword) {
+      return res.status(400).json({
+        message: "Password is required for withdrawal",
+      });
+    }
+
+    const valid = await bcrypt.compare(withdrawalPassword, user.passwordHash);
+
+    if (!valid) {
+      return res.status(401).json({
+        message: "Incorrect password",
+      });
+    }
 
     if (!user.walletAddress) {
       return res.status(400).json({
@@ -62,11 +89,22 @@ exports.create = asyncHandler(async (req, res) => {
     }
   }
 
+  if (
+    proofScreenshot !== undefined &&
+    proofScreenshot !== null &&
+    proofScreenshot !== "" &&
+    !isImageKitUrl(proofScreenshot)
+  ) {
+    return res.status(400).json({
+      message: "Deposit proof must be an uploaded ImageKit image URL",
+    });
+  }
+
   const transaction = await Transaction.create({
     userId: req.user._id,
     type,
     amount: decimal(amountCents),
-    proofScreenshot: proofScreenshot || null,
+    proofScreenshot: type === "deposit" ? proofScreenshot || null : null,
     status: "pending",
   });
 
@@ -83,6 +121,8 @@ exports.myTransactions = asyncHandler(async (req, res) => {
 
 exports.adminList = asyncHandler(async (req, res) => {
   const filter = {};
+  const page = Math.max(1, Number(req.query.page || 1));
+  const limit = Math.min(100, Math.max(1, Number(req.query.limit || 20)));
 
   if (req.query.status) {
     filter.status = req.query.status;
@@ -100,12 +140,22 @@ exports.adminList = asyncHandler(async (req, res) => {
     filter.userId = { $in: ownerUserIds };
   }
 
-  const transactions = await Transaction.find(filter)
-    .populate("userId", "name phone walletAddress")
-    .populate("reviewedBy", "name")
-    .sort({ createdAt: -1 });
+  const [transactions, total] = await Promise.all([
+    Transaction.find(filter)
+      .populate("userId", "name phone walletAddress")
+      .populate("reviewedBy", "name")
+      .sort({ createdAt: -1, _id: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit),
+    Transaction.countDocuments(filter),
+  ]);
 
-  res.json({ transactions });
+  res.json({
+    transactions,
+    total,
+    page,
+    pages: Math.max(1, Math.ceil(total / limit)),
+  });
 });
 
 exports.adminAccept = asyncHandler(async (req, res) => {
@@ -203,7 +253,7 @@ exports.adminAccept = asyncHandler(async (req, res) => {
     });
 
     emitToAdmins("balance:updated", {
-      userId: String(transaction.userId),
+      userId: String(claimed.userId),
       balance: fromCents(updatedBalanceCents),
       reason: "transaction_accepted",
     });

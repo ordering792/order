@@ -2,14 +2,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import {
   Bell, Wallet, CreditCard, Gift, FileText, Globe, Users, Download
 } from "lucide-react";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
-import { money } from "../lib/money";
+import { money, moneyNumber } from "../lib/money";
 import { useT } from "../lib/i18n";
 
 const bannerImages = [
@@ -30,7 +29,7 @@ const partners = [
 ];
 
 export default function DashboardPage() {
-  const { user, refreshUser } = useAuth();
+  const { user } = useAuth();
   const t = useT();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [profits, setProfits] = useState({
@@ -41,7 +40,6 @@ export default function DashboardPage() {
   });
 
   useEffect(() => {
-    refreshUser();
     api
       .profits()
       .then((res) => {
@@ -53,7 +51,7 @@ export default function DashboardPage() {
         });
       })
       .catch(() => {});
-  }, [refreshUser]);
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -62,7 +60,7 @@ export default function DashboardPage() {
     return () => clearInterval(timer);
   }, []);
 
-  const balance = user?.balance ? parseFloat(user.balance) : 0;
+  const balance = moneyNumber(user?.balance);
 
   return (
     <div className="w-full bg-white">
@@ -74,7 +72,12 @@ export default function DashboardPage() {
         >
           {bannerImages.map((img, index) => (
             <div key={index} className="min-w-full h-full relative">
-              <img src={img} alt={`Slide ${index}`} className="w-full h-full object-fill" />
+              <img
+                src={img}
+                alt={`Slide ${index}`}
+                loading={index === 0 ? "eager" : "lazy"}
+                className="w-full h-full object-fill"
+              />
             </div>
           ))}
         </div>

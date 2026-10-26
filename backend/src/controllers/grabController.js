@@ -1,14 +1,15 @@
 const mongoose = require("mongoose");
 const { z } = require("zod");
 const Task = require("../models/Task");
+const Transaction = require("../models/Transaction");
 const User = require("../models/User");
 const OrderPlan = require("../models/OrderPlan");
 const WalletLedger = require("../models/WalletLedger");
 const asyncHandler = require("../utils/asyncHandler");
 const { toCents, decimal } = require("../utils/money");
+const { httpError } = require("../utils/httpError");
+const { COMMISSION_BASIS_POINTS } = require("../services/orderSelection");
 const { emitToUser } = require("../socket");
-
-const COMMISSION_RATE_PERCENT = 0.5;
 
 const ratingSchema = z
   .object({
@@ -16,12 +17,6 @@ const ratingSchema = z
     feedback: z.string().max(1000).nullish(),
   })
   .default({});
-
-function httpError(status, message) {
-  const err = new Error(message);
-  err.status = status;
-  return err;
-}
 
 // Order Detail modal အတွက် လိုအပ်တဲ့ data (reference UI နဲ့တူညီအောင်)
 function serializeGrabTask(task, luckyPosition) {
@@ -76,11 +71,15 @@ const AVAILABLE_STATUSES = ["available", "pending"];
 async function countSummary(userId) {
   const plan = await getUserPlan(userId);
   const totalOrders = plan?.totalOrders ?? 0;
+  // Plan ရှိရင် ဒီ plan ရဲ့ task တွေကိုပဲ ရေတွက်တယ် — မပြီးတဲ့ round က
+  // count တွေက ယခင် round တွေနဲ့ ရောသွားလို့ မရဘူး။ plan မရှိတဲ့ legacy
+  // user အတွက်တော့ အားလုံးကို ရေတွက်မယ်။
+  const scope = plan ? { userId, orderPlanId: plan._id } : { userId };
 
   const [completedCount, undoneCount, availableCount] = await Promise.all([
-    Task.countDocuments({ userId, status: "completed" }),
-    Task.countDocuments({ userId, status: "assigned" }),
-    Task.countDocuments({ userId, status: { $in: AVAILABLE_STATUSES } }),
+    Task.countDocuments({ ...scope, status: "completed" }),
+    Task.countDocuments({ ...scope, status: "assigned" }),
+    Task.countDocuments({ ...scope, status: { $in: AVAILABLE_STATUSES } }),
   ]);
 
   return {
@@ -109,9 +108,11 @@ exports.grabSummary = asyncHandler(async (req, res) => {
       },
       { $group: { _id: null, total: { $sum: "$amount" } } },
     ]),
-    Task.findOne({ userId: req.user._id, status: "assigned" }).sort({
-      orderNumber: 1,
-    }),
+    Task.findOne({
+      userId: req.user._id,
+      status: "assigned",
+      ...(plan ? { orderPlanId: plan._id } : {}),
+    }).sort({ orderNumber: 1 }),
   ]);
 
   const luckyPosition = activeOrder
@@ -125,7 +126,7 @@ exports.grabSummary = asyncHandler(async (req, res) => {
       freezeBalance: "0.00",
       totalOrderNumber: totalOrders,
       vipLevel: "FREE VIP",
-      commissionRate: `${COMMISSION_RATE_PERCENT.toFixed(2)}%`,
+      commissionRate: `${(Number(COMMISSION_BASIS_POINTS) / 100).toFixed(2)}%`,
       completedCount,
       remainingCount,
       undoneCount,
@@ -152,12 +153,14 @@ exports.match = asyncHandler(async (req, res) => {
   // ရှိပြီးသား active order ရှိရင် အဲဒါကိုပဲ ပြမယ် (idempotent)
   let task = await Task.findOne({
     userId: req.user._id,
+    orderPlanId: plan._id,
     status: "assigned",
   }).sort({ orderNumber: 1 });
 
   if (!task) {
     task = await Task.findOne({
       userId: req.user._id,
+      orderPlanId: plan._id,
       status: { $in: AVAILABLE_STATUSES },
     })
       .sort({ orderNumber: 1 })
@@ -179,17 +182,33 @@ exports.match = asyncHandler(async (req, res) => {
   const luckyPosition = await getLuckyPosition(plan, task.orderNumber);
   const detail = serializeGrabTask(task, luckyPosition);
 
-  const balanceCents = toCents(user.balance.toString());
   const depositCents = toCents(detail.requireDeposit);
 
-  // Lucky order က balance မလုံရင် deposit အသစ်သွင်းမှသာ ဆက်လုပ်ရ (reserve ထားပြီး)
+  // Lucky deposit ကို completeTask က accepted ဖြစ်ပြီး မရောင်းရသေးတဲ့
+  // requiredDeposit တိတိကျကျ တူ deposit tx တစ်ခုနဲ့ပဲ ဖြည်တယ် — balance
+  // လုံလုံရုံနဲ့ မဖွင့်နိုင်ဘူး။ ဒါကြောင့် preflight က claimability ကို စစ်မယ်။
+  let needsDeposit = false;
+  let shortByCents = 0n;
+
+  if (depositCents > 0n) {
+    const claimable = await Transaction.exists({
+      userId: req.user._id,
+      type: "deposit",
+      status: "accepted",
+      amount: decimal(depositCents),
+      allocation: null,
+      _id: { $ne: plan.initialDepositTxId },
+    });
+
+    needsDeposit = !claimable;
+    shortByCents = claimable ? 0n : depositCents;
+  }
+
   res.json({
     order: detail,
     balance: user.balance ? user.balance.toString() : "0.00",
-    needsDeposit: depositCents > 0n && balanceCents < depositCents,
-    shortBy: decimal(
-      depositCents > balanceCents ? depositCents - balanceCents : 0n,
-    ).toString(),
+    needsDeposit,
+    shortBy: decimal(shortByCents).toString(),
   });
 });
 
@@ -243,14 +262,17 @@ exports.submit = asyncHandler(async (req, res) => {
 
 // /orders page — match/submit လုပ်ပြီးနောက် order list (assigned + completed သာ)
 exports.myOrders = asyncHandler(async (req, res) => {
+  const plan = await getUserPlan(req.user._id);
+
   const tasks = await Task.find({
     userId: req.user._id,
+    // Plan ရှိရင် ဒီ plan ရဲ့ order တွေကိုပဲ ပြတယ် — plan ဆံသတ်ရင်
+    // ORD-001 စသဖြင့် နံပါတ် ပြန်ထပ်ပြီး စာရင်း ရှည်သွားလို့ မရဘူး။
+    ...(plan ? { orderPlanId: plan._id } : {}),
     status: { $in: ["assigned", "completed"] },
   })
     .sort({ orderNumber: 1 })
     .lean();
-
-  const plan = await getUserPlan(req.user._id);
 
   res.json({
     tasks,

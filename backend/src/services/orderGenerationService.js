@@ -10,7 +10,8 @@ const {
   priceRangeForBase,
   selectProductsForRange,
 } = require("./orderSelection");
-const { getPlanById, httpError } = require("./orderPlanService");
+const { getPlanById } = require("./orderPlanService");
+const { httpError } = require("../utils/httpError");
 const { emitToAdmins } = require("../socket");
 
 // Plan တစ်ခုကနေ order အားလုံးကို ဖန်တီးပြီး task အဖြစ် သိမ်းတယ်။
@@ -30,8 +31,11 @@ async function generateOrders({ planId, depositTransactionId }, actor) {
         throw httpError(409, "Plan already generated");
       }
 
+      // createPlan ရဲ့ check နဲ့ တစ်ထပ်တည်း — plan မရှိတဲ့ (legacy) task ကိုပဲ ပိတ်တယ်။
+      // ရပြီးတဲ့ plan ရဲ့ task တွေက orderPlanId ရှိလို့ round ၂ generate ကို မတားဘူး။
       const existingTasks = await Task.exists({
         userId: fresh.userId,
+        orderPlanId: null,
       }).session(session);
 
       if (existingTasks) {

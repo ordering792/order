@@ -4,14 +4,25 @@ const jwt = require("jsonwebtoken");
 const onlineUsers = new Map();
 const onlineGuests = new Map();
 
-function authenticate(socket, next) {
+async function authenticate(socket, next) {
   const { token, guestId } = socket.handshake.auth || {};
 
   if (token) {
     try {
       const payload = jwt.verify(token, process.env.JWT_SECRET);
+      const User = require("../models/User");
+
+      // JWT ထဲက role ကို တိုက်ရိုက်မယုံဘူး — authMiddleware လိုပဲ DB ကနေ
+      // ပြန်ဖတ်တယ်။ မဟုတ်ရင် burned/demote လုပ်ပြီး user က token ပျက်သည်
+      // အထိ real-time access ဆက်ရမယ်။
+      const user = await User.findById(payload.userId).select("role status");
+
+      if (!user || user.status === "burned") {
+        return next(new Error("Account unavailable"));
+      }
+
       socket.data.userId = payload.userId;
-      socket.data.role = payload.role || "user";
+      socket.data.role = user.role;
       socket.data.guestId = null;
       return next();
     } catch {
@@ -51,6 +62,10 @@ function setupSocket(httpServer) {
     const { userId, guestId, role } = socket.data;
 
     const Conversation = require("../models/Conversation");
+
+    // senderType က client payload ကနေ မယူဘူး — handshake JWT ထဲက role ကနေပဲ
+    // ဆုံးဖြတ်တယ်။ သူ့မဟုတ်ရင် customer က "admin" ပို့ပြီး message ဖြည့်စွက်လို့ ရଯায়။
+    const senderTypeFor = () => (role === "admin" ? "admin" : "customer");
 
     // ဒီ conversation က သူ့/သူမိသားကပဲ ဖြစ်မှ ဝင်ခွင့်ရမယ်။
     const ownsConversation = async (conversationId) => {
@@ -111,28 +126,28 @@ function setupSocket(httpServer) {
     });
 
     // Typing indicator
-    socket.on("typing:start", async ({ conversationId, senderType }) => {
+    socket.on("typing:start", async ({ conversationId }) => {
       if (!(await ownsConversation(conversationId))) return;
 
       socket.to(`conv:${conversationId}`).emit("typing:start", {
         conversationId,
-        senderType,
+        senderType: senderTypeFor(),
       });
     });
 
-    socket.on("typing:stop", async ({ conversationId, senderType }) => {
+    socket.on("typing:stop", async ({ conversationId }) => {
       if (!(await ownsConversation(conversationId))) return;
 
       socket.to(`conv:${conversationId}`).emit("typing:stop", {
         conversationId,
-        senderType,
+        senderType: senderTypeFor(),
       });
     });
 
     // Send message via socket (alternative to REST)
     socket.on(
       "message:send",
-      async ({ conversationId, body, senderType }, callback) => {
+      async ({ conversationId, body }, callback) => {
         if (typeof conversationId !== "string" || typeof body !== "string") {
           if (callback) callback({ error: "Invalid payload" });
           return;
@@ -159,7 +174,7 @@ function setupSocket(httpServer) {
 
           const message = await Message.create({
             conversationId: conversation._id,
-            senderType: senderType === "admin" ? "admin" : "customer",
+            senderType: senderTypeFor(),
             userId: userId || null,
             guestId: guestId || null,
             body: body.slice(0, 5000),
@@ -201,7 +216,9 @@ function setupSocket(httpServer) {
 
           if (callback) callback({ message });
         } catch (err) {
-          if (callback) callback({ error: err.message });
+          // internal message ကို client မပို့ဘူး — server log မှာပဲ ထားမယ်။
+          console.error("message:send failed:", err);
+          if (callback) callback({ error: "Message could not be sent" });
         }
       },
     );

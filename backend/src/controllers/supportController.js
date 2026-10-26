@@ -4,6 +4,7 @@ const Conversation = require("../models/Conversation");
 const Message = require("../models/Message");
 const User = require("../models/User");
 const asyncHandler = require("../utils/asyncHandler");
+const { escapeRegExp } = require("../utils/regex");
 const { emitToConversation, emitToAdmins } = require("../socket");
 
 const startConversationSchema = z.object({
@@ -229,10 +230,8 @@ exports.adminListConversations = asyncHandler(async (req, res) => {
 
   if (status) filter.status = status;
   if (search) {
-    filter.$or = [
-      { subject: { $regex: search, $options: "i" } },
-      { lastMessagePreview: { $regex: search, $options: "i" } },
-    ];
+    const rx = new RegExp(escapeRegExp(search), "i");
+    filter.$or = [{ subject: rx }, { lastMessagePreview: rx }];
   }
 
   // Owner sees only their users' conversations; admin sees all

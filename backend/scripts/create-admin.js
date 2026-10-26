@@ -27,25 +27,9 @@ if (!phone) {
 async function createAdmin() {
   await connectDB();
 
-  const User = mongoose.model(
-    "User",
-    new mongoose.Schema(
-      {
-        name: String,
-        phone: { type: String, unique: true },
-        passwordHash: String,
-        invitationCode: { type: String, unique: true },
-        role: { type: String, enum: ["user", "owner", "admin"], default: "user" },
-        ownerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
-        ownerInviteCode: { type: String, default: undefined, unique: true, sparse: true },
-        balance: { type: mongoose.Schema.Types.Decimal128, default: "0.00" },
-        walletAddress: { type: String, default: null },
-        status: { type: String, enum: ["online", "offline", "burned"], default: "offline" },
-        language: { type: String, default: "en" },
-      },
-      { timestamps: true },
-    ),
-  );
+  // Model အစစ်ကို သုံးတယ် — inline schema ဆံသတ်ရင် inviteService က
+  // User ကို compile လုပ်ပြီးသားဖြစ်လို့ OverwriteModelError ထွက်တယ်။
+  const User = require("../src/models/User");
 
   const existing = await User.findOne({ phone });
 

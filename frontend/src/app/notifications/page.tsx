@@ -91,6 +91,15 @@ export default function NotificationsPage() {
     const socket = getSocket();
     if (!socket) return;
 
+    let refreshTimer: number | null = null;
+    const scheduleReload = () => {
+      if (refreshTimer !== null) return;
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = null;
+        load();
+      }, 800);
+    };
+
     const onCompleted = (payload: { orderNumber?: number; commission?: string }) => {
       setLiveItems((items) => [
         {
@@ -107,7 +116,7 @@ export default function NotificationsPage() {
         },
         ...items,
       ]);
-      load();
+      scheduleReload();
     };
 
     const onSubmitted = (payload: { orderNumber?: number }) => {
@@ -128,6 +137,9 @@ export default function NotificationsPage() {
     socket.on("order:submitted", onSubmitted);
 
     return () => {
+      if (refreshTimer !== null) {
+        window.clearTimeout(refreshTimer);
+      }
       socket.off("order:completed", onCompleted);
       socket.off("order:submitted", onSubmitted);
     };

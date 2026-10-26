@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import {
@@ -13,6 +14,7 @@ import {
   ApiUser,
   clearSession,
   getStoredUser,
+  SESSION_EXPIRED_EVENT,
   storeSession,
 } from "./api";
 
@@ -36,6 +38,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<ApiUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const refreshPromiseRef = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
     const stored = getStoredUser();
@@ -45,18 +48,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(false);
   }, []);
 
+  // Token ပျက်တဲ့ request တိုင်းမှာ client က ဒီ event ကို ပို့တယ် —
+  // page အတိုင်းအတာနဲ့ 401 ကို မဖမ်းနိုင်လို့ session level မှာ ပိတ်တယ်။
+  useEffect(() => {
+    const onExpired = () => setUser(null);
+    window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
+  }, []);
+
   const refreshUser = useCallback(async () => {
-    try {
-      const { user: fresh } = await api.me();
-      setUser(fresh);
-      const token = localStorage.getItem("token");
-      if (token) storeSession(token, fresh);
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 401) {
-        clearSession();
-        setUser(null);
+    if (refreshPromiseRef.current) return refreshPromiseRef.current;
+
+    const promise = (async () => {
+      try {
+        const { user: fresh } = await api.me();
+        setUser(fresh);
+        const token = localStorage.getItem("token");
+        if (token) storeSession(token, fresh);
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 401) {
+          clearSession();
+          setUser(null);
+        }
+      } finally {
+        refreshPromiseRef.current = null;
       }
-    }
+    })();
+
+    refreshPromiseRef.current = promise;
+    return promise;
   }, []);
 
   const login = useCallback(async (phone: string, password: string) => {

@@ -49,16 +49,103 @@ set PORT=3001 && npm run dev  # :3001
 | `backend` | `CLIENT_ORIGIN` | **နှစ် frontend origin ကို comma နဲ့ သတ်မှတ်ပါ** — `https://admin.example.com,https://app.example.com` |
 | `backend` | `DEFAULT_INVITATION_CODE` | master invite code (default `MASTER2024`) |
 | `backend` | `PORT` | default `5000` |
+| `backend` | `IMAGEKIT_PUBLIC_KEY` | **required** — မရှိရင် server boot မဖြစ်ပါ (`src/config/env.js`) |
+| `backend` | `IMAGEKIT_PRIVATE_KEY` | **required** — server အတွင်းပဲ၊ frontend မှာ ဘယ်တော့မှ မထည့်ပါနဲ့ |
+| `backend` | `IMAGEKIT_URL_ENDPOINT` | **required** — `https://ik.imagekit.io/YOUR_ID` |
 | `frontend` | `NEXT_PUBLIC_API_URL` | `https://api.example.com/api` |
 | `admin` | `NEXT_PUBLIC_API_URL` | `https://api.example.com/api` |
 
-## Deployment
+> `NEXT_PUBLIC_*` တွေက `next build` မှာ **inline ဖြစ်သွားတာ** မို့ runtime env နဲ့ မပြောင်းနိုင်ပါ။ Docker image build ခါ `--build-arg` (Railway မှာ build variable) အဖြစ် ထည့်ရပါမယ်။ `frontend/Dockerfile` နဲ့ `admin/Dockerfile` မှာ မထည့်ရင် build **fail** လုပ်အောင် သတ်ထားတယ် — `localhost:5000` ပဲ bake ဖြစ်ပြီး browser မှာ silent fail ဖြစ်တဲ့အတွက်ပါ။
 
-1. **Backend** (Railway / Render / Fly / VPS): root = `backend/`, build = `npm ci`, start = `npm start`
-   - env: `MONGODB_URI`, `JWT_SECRET`, `CLIENT_ORIGIN` (နှစ် frontend origin), `DEFAULT_INVITATION_CODE`
-2. **User app** (Vercel / Netlify): root = `frontend/`, env: `NEXT_PUBLIC_API_URL`
-3. **Admin app** (Vercel / Netlify — သီးသန့် project): root = `admin/`, env: `NEXT_PUBLIC_API_URL`
-   - admin app ကို public deploy မလုပ်ဘူး — admin/owner login ပဲ ဝင်ခွင့်ရမယ် (backend က authorize လုပ်တာမို့ client-side hide သာ မလုံလောက်)
+## Deployment — Railway (Docker, သုံးservice လုံး)
+
+Service တိုင်း `Dockerfile` + `railway.json` ရှိပါတယ်။ Railway က `Dockerfile` ကို auto-detect လုပ်ပေမယ့် monorepo မှာ **root directory** ကို သတ်မှတ်ပေးရပါမယ်။
+
+### 1. Project ဖွင့်ပြီး service ၃ ခု ထည့်ပါ
+
+| Service | Root Directory | Build (Dockerfile) | Public |
+| --- | --- | --- | --- |
+| `backend` | `backend/` | `backend/Dockerfile` | ✅ Public networking |
+| `frontend` | `frontend/` | `frontend/Dockerfile` | ✅ Public networking |
+| `admin` | `admin/` | `admin/Dockerfile` | ✅ (login gate သာ — အောက်မှာ သတိ) |
+
+Root Directory set ချင်မယ်ဆို service variable `RAILWAY_DOCKERFILE_PATH=backend/Dockerfile` လည်း သုံးလို့ရတယ်။
+
+### 2. Deploy အစဉ် (domain တွေ interdepend ဖြစ်လို့ စဉ်အစဉ် အရေးကြီး)
+
+```
+a) backend ကို အရင် deploy → https://<backend>.up.railway.app ရမယ်
+b) frontend/admin service တွေမှာ BUILD variable:
+     NEXT_PUBLIC_API_URL=https://<backend>.up.railway.app/api
+c) frontend/admin ကို deploy → domain ၂ ခု ရမယ်
+d) backend service မှာ CLIENT_ORIGIN ကို အဲဒီ ၂ domain comma ခွဲ ထည့်ပြီး ပြန် deploy
+     CLIENT_ORIGIN=https://<frontend>.up.railway.app,https://<admin>.up.railway.app
+```
+**d) မလုပ်ရင် CORS fail** — `CLIENT_ORIGIN` default က `http://localhost:3000` ဖြစ်နေလို့ browser request တွေ block ဖြစ်မယ်။
+
+### 3. backend variables (Service → Variables)
+
+```
+MONGODB_URI          Atlas connection string (password URL-encode လုပ်ပါ)
+JWT_SECRET           32+ စာလုံး — node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+JWT_EXPIRES_IN       1d
+CLIENT_ORIGIN        အဆင့် (d) အတိုင်း ၂ ခု comma
+DEFAULT_INVITATION_CODE
+IMAGEKIT_PUBLIC_KEY
+IMAGEKIT_PRIVATE_KEY
+IMAGEKIT_URL_ENDPOINT
+```
+`PORT` ကို Railway ထည့်ပေးတယ် — container တွေက `0.0.0.0` မှာ နားထောင်အောင် သတ်ထားပြီး။
+
+> ⚠️ ImageKit key ၃ ခု **မရှိရင် backend crash loop** ဝင်မယ် (`src/config/env.js` က fail-fast လုပ်လို့)။ Deploy မတိုင်မီ ထည့်ထားရမယ်။
+
+### 4. Admin account ဖန်တီးရန်
+
+Railway service → **Deploy → View Details → Attach / Exec container** ထဲမှာ:
+
+```bash
+node scripts/create-admin.js --phone 09xxxxxxxxx
+# password မပေးရင် random ဖန်တီးပြီး တစ်ခါတည်းပဲ ပြသမယ် (ခopy လုပ်ထားပါ)
+```
+`scripts/` ကို image ထဲ COPY လုပ်ထားလို့ exec မှာ တိုက်ရိုက်ရတယ်။
+
+### 5. Index migration (DB အသစ်မဟုတ်ရင် လုပ်ရမယ်)
+
+`Task` ရဲ့ unique index က `(userId, orderNumber)` ကနေ `(userId, orderPlanId, orderNumber)` ပြောင်းလိုက်တယ် — plan အသစ် (round ၂) စတင်ရင် orderNumber ၁ ပြန်ထပ်လို့ E11000 ဖြစ်နေလို့။ Mongoose က index အသစ် တင်ပေမယ့် **အဟောင်းကို မဖျက်ဘူး**၊ ရှိပြီးသား DB ဆို `generate` က 500 တက်မယ်။ Exec container ထဲမှာ:
+
+```bash
+node scripts/migrate-task-index.js
+```
+
+OrderPlan index အတွက်လည်း အလားတူ script ရှိပါတယ် — ရှိပြီးသား DB ဆို `scripts/migrate-orderplan-index.js` ကို တစ်ခါ run ပါ။
+
+### 6. Socket.IO သတိထားရန်
+
+Railway websocket support လုပ်တယ်၊ ဒါပေမယ့် **backend service တစ်ခုတည်း** သာထားပါ — Redis adapter မထည့်ရသေးသလို့ instance ၂ ခုဆို B က REST request ထဲက emit က A socket ကို silently drop ဖြစ်မယ် (`src/socket/index.js`)။ Support chat + realtime balance update အလုပ်လုပ်ဖို့ single instance မဖြစ်မနေ။
+
+### 7. Health check
+
+```bash
+curl https://<backend>.up.railway.app/api/health
+```
+`railway.json` မှာ `healthcheckPath` သတ်ပြီးသား (`/api/health`, frontend/admin တွေ `/`)။
+
+### Local Docker နဲ့ စမ်းရန်
+
+```bash
+docker compose up --build
+# frontend :3000   admin :3001   backend :5000
+```
+Compose ထဲမှာ MongoDB ကို **single-node replica set** (`--replSet rs0` + auto `rs.initiate`) အဖြစ် တင်ပေးထားတယ် — withdraw approve/order complete တွေ `session.withTransaction` သုံးလို့ standalone mongod ဆို fail ဖြစ်လို့ပါ။ Atlas သုံးချင်ရင် `backend` service ရဲ့ `MONGODB_URI` ကို comment ဖွင့် override လုပ်ပါ။
+
+<details>
+<summary>Alternatives (Vercel / Netlify / Render)</summary>
+
+- **Backend** (Render / Fly / VPS): root = `backend/`, build = `npm ci`, start = `npm start`
+- **User app / Admin app** (Vercel / Netlify သီးသန့် project): root = သက်ဆိုင်ရာ folder, env `NEXT_PUBLIC_API_URL` **at build time**
+- Vercel/Netlify သုံးရင် `output: "standalone"` ကို next config ထဲက ဖယ်ပါ (serverless adapter နဲ့ မလိုက်အပ်)
+
+</details>
 
 ### Admin access
 
@@ -77,8 +164,13 @@ curl http://localhost:5000/api/health
 ## Tests
 
 ```bash
-cd backend
-npm test          # 215 tests (jest + in-memory MongoDB)
+cd backend  && npm test    # 238 tests / 14 suites (jest + replica-set MongoDB)
+cd frontend && npm test    # 56 tests / 6 suites
+cd admin    && npm test    # 55 tests / 5 suites
+
+# browser e2e (Playwright — service တွေ run တင်ထားရမယ်)
+cd frontend && npm run test:e2e
+cd admin    && npm run test:e2e
 ```
 
 ## Security notes

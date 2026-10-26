@@ -1,6 +1,10 @@
 import { ApiError, type ApiUser } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+const DEFAULT_REQUEST_TIMEOUT_MS = 15000;
+
+// AuthProvider ဒီ event ကို နားထောင်ပြီး user ကို cleared ပြတယ်။
+export const SESSION_EXPIRED_EVENT = "auth:expired";
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -30,14 +34,22 @@ export function clearSession() {
 
 export async function request<T>(
   path: string,
-  options: RequestInit = {},
+  options: RequestInit & { timeoutMs?: number } = {},
 ): Promise<T> {
   const token = getToken();
+  const { timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS, signal: callerSignal, ...requestOptions } = options;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(new DOMException("Request timed out", "TimeoutError")), timeoutMs);
+  const abortFromCaller = () => controller.abort(callerSignal?.reason);
+
+  if (callerSignal?.aborted) abortFromCaller();
+  else callerSignal?.addEventListener("abort", abortFromCaller, { once: true });
+
   const headers: Record<string, string> = {
-    ...(options.headers as Record<string, string>),
+    ...(requestOptions.headers as Record<string, string>),
   };
 
-  if (!(options.body instanceof FormData)) {
+  if (!(requestOptions.body instanceof FormData)) {
     headers["Content-Type"] = "application/json";
   }
 
@@ -45,20 +57,38 @@ export async function request<T>(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  try {
+    const res = await fetch(`${API_URL}${path}`, {
+      ...requestOptions,
+      headers,
+      signal: controller.signal,
+    });
 
-  const data = await res.json().catch(() => ({}));
+    const data = await res.json().catch(() => ({}));
 
-  if (!res.ok) {
-    throw new ApiError(
-      res.status,
-      data.message || `Request failed (${res.status})`,
-      data.errors,
-    );
+    if (!res.ok) {
+      // Token ပျက်ရင် session ကို ရှင်းပြီး event ပို့တယ် — page တွေက
+      // .catch(() => {}) နဲ့ ဖုံးအုပ်ထားလို့ 401 ကို ဘယ်သူမှ မသိရဘူး။
+      if (res.status === 401 && typeof window !== "undefined") {
+        clearSession();
+        window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+      }
+
+      throw new ApiError(
+        res.status,
+        data.message || `Request failed (${res.status})`,
+        data.errors,
+      );
+    }
+
+    return data as T;
+  } catch (error) {
+    if (controller.signal.aborted && !callerSignal?.aborted) {
+      throw new Error("Request timed out. Please try again.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    callerSignal?.removeEventListener("abort", abortFromCaller);
   }
-
-  return data as T;
 }

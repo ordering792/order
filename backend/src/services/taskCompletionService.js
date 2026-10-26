@@ -6,16 +6,9 @@ const LuckyOrderConfig = require("../models/LuckyOrderConfig");
 const OrderPlan = require("../models/OrderPlan");
 const Transaction = require("../models/Transaction");
 const { toCents, fromCents, decimal } = require("../utils/money");
+const { httpError } = require("../utils/httpError");
+const { DEFAULT_INVITATION_CODE } = require("../config/invitation");
 const { emitToAdmins, emitToUser } = require("../socket");
-
-const DEFAULT_INVITATION_CODE =
-  process.env.DEFAULT_INVITATION_CODE || "MASTER2024";
-
-function httpError(status, message) {
-  const err = new Error(message);
-  err.status = status;
-  return err;
-}
 
 function referralBasisPoints() {
   const raw = process.env.REFERRAL_BONUS_PERCENT ?? "10";

@@ -1,7 +1,9 @@
 "use client";
 
 import { X } from "lucide-react";
+import { useState } from "react";
 import { useT } from "@/lib/i18n";
+import { uploadToImageKit, validateImageFile } from "@/lib/uploadImage";
 
 export interface ProductFormValues {
   name: string;
@@ -40,6 +42,8 @@ export default function ProductForm({
   onCancel,
 }: ProductFormProps) {
   const t = useT();
+  const [imageUploading, setImageUploading] = useState(false);
+  const [imageError, setImageError] = useState("");
 
   const field = (key: keyof ProductFormValues) => ({
     value: values[key],
@@ -111,14 +115,58 @@ export default function ProductForm({
           />
         </label>
 
-        <label className="text-xs font-semibold text-slate-500 sm:col-span-2">
+        <div className="text-xs font-semibold text-slate-500 sm:col-span-2">
           {t("admin.field.image")}
           <input
-            type="text"
-            {...field("imageUrl")}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal text-slate-700 outline-none focus:border-[#ff6600]"
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            disabled={imageUploading}
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              setImageError("");
+              if (!file) return;
+
+              try {
+                validateImageFile(file, 5 * 1024 * 1024);
+                setImageUploading(true);
+                const url = await uploadToImageKit(file, "product");
+                onChange({ ...values, imageUrl: url });
+              } catch (err) {
+                setImageError(
+                  err instanceof Error ? err.message : "Image upload failed",
+                );
+              } finally {
+                setImageUploading(false);
+                e.target.value = "";
+              }
+            }}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal text-slate-700 outline-none file:mr-3 file:rounded-md file:border-0 file:bg-orange-50 file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-[#ff6600]"
           />
-        </label>
+          {imageUploading && (
+            <p className="mt-2 text-xs text-slate-500">Uploading image...</p>
+          )}
+          {imageError && (
+            <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">
+              {imageError}
+            </p>
+          )}
+          {values.imageUrl && (
+            <div className="mt-3 flex items-center gap-3">
+              <img
+                src={values.imageUrl}
+                alt={values.name || "Product image"}
+                className="h-20 w-20 rounded-lg border border-slate-200 object-cover"
+              />
+              <button
+                type="button"
+                onClick={() => onChange({ ...values, imageUrl: "" })}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
+              >
+                Remove image
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="mt-4 flex gap-2">

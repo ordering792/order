@@ -8,14 +8,14 @@ import {
 } from "lucide-react";
 import CountryLanguageModal from "../components/CountryLanguageModal";
 import { getStoredLang } from "../../lib/language";
-import { api, ApiTask, ApiPlan, ApiError } from "../../lib/api";
+import { api, ApiTask, ApiError } from "../../lib/api";
 import { money } from "../../lib/money";
 import { useAuth } from "../../lib/auth";
 import { useT } from "../../lib/i18n";
 import RequireAuth from "../components/RequireAuth";
 
 export default function OrdersPage() {
-  const { user, refreshUser } = useAuth();
+  const { user } = useAuth();
   const t = useT();
   const [filter, setFilter] = useState("all");
   const [isLangModalOpen, setIsLangModalOpen] = useState(false);
@@ -60,8 +60,6 @@ export default function OrdersPage() {
 
     try {
       await api.completeTask(task._id);
-      // အကောင့်ကို ပြီးတာနဲ့ balance (commission ပါ) ချက်ချင်း update ဖြစ်အောင်
-      await refreshUser();
       load();
     } catch (err) {
       setActionError(

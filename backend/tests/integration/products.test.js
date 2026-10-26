@@ -150,6 +150,21 @@ describe("Product catalog endpoints", () => {
 
       expect(res.status).toBe(401);
     });
+
+    it("rejects a non-HTTPS image URL", async () => {
+      const admin = await createUser("admin");
+
+      const res = await request(app)
+        .post("/api/products")
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({
+          name: "Bad image",
+          price: "10.00",
+          imageUrl: "javascript:alert(1)",
+        });
+
+      expect(res.status).toBe(400);
+    });
   });
 
   describe("GET /api/products", () => {

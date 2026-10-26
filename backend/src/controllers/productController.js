@@ -14,6 +14,17 @@ function parseMoney(value) {
   return cents;
 }
 
+function isValidImageValue(value) {
+  if (value === undefined || value === null || value === "") return true;
+
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 const createSchema = z.object({
   name: z.string().min(1).max(200),
   code: z.string().max(50).optional(),
@@ -70,6 +81,10 @@ exports.create = asyncHandler(async (req, res) => {
     }
   }
 
+  if (!isValidImageValue(parsed.data.imageUrl)) {
+    return res.status(400).json({ message: "Product image must be a valid HTTPS URL" });
+  }
+
   const product = await Product.create({
     name: parsed.data.name,
     code: parsed.data.code || "",
@@ -97,6 +112,12 @@ exports.bulkCreate = asyncHandler(async (req, res) => {
   const docs = [];
 
   for (const item of parsed.data.products) {
+    if (!isValidImageValue(item.imageUrl)) {
+      return res.status(400).json({
+        message: `Product image must be a valid HTTPS URL (${item.name})`,
+      });
+    }
+
     let priceCents;
 
     try {
@@ -195,8 +216,12 @@ exports.update = asyncHandler(async (req, res) => {
   if (parsed.data.description !== undefined) {
     updates.description = parsed.data.description;
   }
-  if (parsed.data.imageUrl !== undefined)
+  if (parsed.data.imageUrl !== undefined) {
+    if (!isValidImageValue(parsed.data.imageUrl)) {
+      return res.status(400).json({ message: "Product image must be a valid HTTPS URL" });
+    }
     updates.imageUrl = parsed.data.imageUrl;
+  }
 
   if (parsed.data.price !== undefined) {
     let priceCents;

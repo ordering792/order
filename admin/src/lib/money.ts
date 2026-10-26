@@ -13,3 +13,18 @@ export function money(value: MoneyValue): string {
   if (typeof value === "string") return value;
   return value.$numberDecimal ?? "—";
 }
+
+// Number() / parseFloat() ကို API value အပေါ် တိုက်ရိုက်မသုံးဘူး —
+// Decimal128 ပုံစံကျရင် NaN ဖြစ်ပြီး UI မှာ "$NaN" ပြသောမယ်။
+export function moneyNumber(value: MoneyValue): number {
+  const parsed = Number(money(value));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+// စာရင်း/လက်ကျန် ပြသရန် (ထောင်ဂဏန်း comma ပါ)။
+export function formatMoney(value: MoneyValue): string {
+  return moneyNumber(value).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}

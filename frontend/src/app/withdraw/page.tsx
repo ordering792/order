@@ -1,7 +1,7 @@
 // src/app/withdraw/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import {
   ChevronLeft, ChevronDown, Wallet, Lock,
@@ -12,10 +12,11 @@ import { getStoredLang } from "../../lib/language";
 import { api, ApiError } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { useT } from "../../lib/i18n";
+import { moneyNumber } from "../../lib/money";
 import RequireAuth from "../components/RequireAuth";
 
 export default function WithdrawPage() {
-  const { user, refreshUser } = useAuth();
+  const { user } = useAuth();
   const t = useT();
   const [amount, setAmount] = useState<string>("");
   const [password, setPassword] = useState<string>("");
@@ -24,12 +25,8 @@ export default function WithdrawPage() {
   const [toast, setToast] = useState<{ show: boolean; message: string }>({ show: false, message: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const totalAvailable = user?.balance ? parseFloat(user.balance) : 0;
+  const totalAvailable = moneyNumber(user?.balance);
   const boundWallet = user?.walletAddress || "";
-
-  useEffect(() => {
-    refreshUser();
-  }, [refreshUser]);
 
   const showToast = (message: string) => {
     setToast({ show: true, message });
@@ -65,11 +62,11 @@ export default function WithdrawPage() {
       await api.createTransaction({
         type: "withdraw",
         amount: Number(amount).toFixed(2),
+        password,
       });
       showToast(t("withdraw.submitSuccess"));
       setAmount("");
       setPassword("");
-      await refreshUser();
     } catch (err) {
       const message = err instanceof ApiError ? err.message : t("withdraw.submitFailed");
       showToast(message);

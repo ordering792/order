@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  ChevronDown, Send, Image as ImageIcon, X, CheckCircle,
+  ChevronDown, Send, CheckCircle,
   Home, ClipboardList, Headphones, User
 } from "lucide-react";
 import CountryLanguageModal from "../components/CountryLanguageModal";
@@ -26,15 +26,12 @@ export default function SupportPage() {
   const t = useT();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
-  const [selectedImage, setSelectedImage] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isLangModalOpen, setIsLangModalOpen] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState(getStoredLang);
   const [toast, setToast] = useState<{ show: boolean; message: string }>({ show: false, message: "" });
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const showToast = (message: string) => {
     setToast({ show: true, message });
@@ -74,24 +71,11 @@ export default function SupportPage() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setSelectedImage(file);
-      setImagePreview(URL.createObjectURL(file));
-    }
-  };
-
-  const clearImage = () => {
-    setSelectedImage(null);
-    setImagePreview(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
-
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!inputText.trim() && !selectedImage) {
+    const body = inputText.trim();
+    if (!body) {
       showToast(t("support.needMessage"));
       return;
     }
@@ -100,20 +84,21 @@ export default function SupportPage() {
       return;
     }
 
+    const tempId = `temp-${Date.now()}`;
     const newMessage: ChatMessage = {
-      _id: `temp-${Date.now()}`,
+      _id: tempId,
       senderType: "customer",
-      body: inputText,
+      body,
       createdAt: new Date().toISOString(),
     };
 
     setMessages((prev) => [...prev, newMessage]);
     setInputText("");
-    clearImage();
 
     try {
-      await api.sendSupportMessage(conversationId, { body: inputText });
+      await api.sendSupportMessage(conversationId, { body });
     } catch (err) {
+      setMessages((prev) => prev.filter((m) => m._id !== tempId));
       const message = err instanceof ApiError ? err.message : t("support.sendFailed");
       showToast(message);
     }
@@ -180,29 +165,7 @@ export default function SupportPage() {
         <div className="bg-white border-t border-gray-100 p-3 z-30 shrink-0">
           <form onSubmit={handleSendMessage} className="flex flex-col space-y-2">
 
-            {imagePreview && (
-              <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-xl border border-gray-200">
-                <img src={imagePreview} alt="Preview" className="w-12 h-12 object-cover rounded-lg" />
-                <span className="text-xs text-gray-600 truncate flex-1">{selectedImage?.name}</span>
-                <button type="button" onClick={clearImage} className="text-red-500 hover:text-red-700 p-1">
-                  <X size={18} />
-                </button>
-              </div>
-            )}
-
             <div className="flex items-center space-x-2">
-              <label htmlFor="imageUpload" className="w-10 h-10 bg-gray-100 hover:bg-orange-50 text-gray-500 hover:text-[#ff6600] rounded-full flex items-center justify-center cursor-pointer transition shrink-0">
-                <ImageIcon size={20} />
-              </label>
-              <input
-                type="file"
-                id="imageUpload"
-                accept="image/*"
-                className="hidden"
-                onChange={handleImageChange}
-                ref={fileInputRef}
-              />
-
               <input
                 type="text"
                 placeholder={t("support.inputPlaceholder")}

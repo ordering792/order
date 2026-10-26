@@ -11,7 +11,12 @@ import type {
 } from "./types";
 
 export * from "./types";
-export { getStoredUser, storeSession, clearSession } from "./client";
+export {
+  clearSession,
+  getStoredUser,
+  SESSION_EXPIRED_EVENT,
+  storeSession,
+} from "./client";
 
 export const api = {
   get: <T>(path: string) => request<T>(path),
@@ -159,8 +164,22 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  adminListTransactions: () =>
-    request<{ transactions: ApiTransaction[] }>("/transactions/admin"),
+  adminListTransactions: (params?: {
+    status?: string;
+    type?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (params?.type) query.set("type", params.type);
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.limit) query.set("limit", String(params.limit));
+    const qs = query.toString();
+    return request<{ transactions: ApiTransaction[]; total: number; page: number; pages: number }>(
+      `/transactions/admin${qs ? `?${qs}` : ""}`,
+    );
+  },
 
   acceptTransaction: (id: string) =>
     request<{ transaction: ApiTransaction }>(
@@ -225,10 +244,20 @@ export const api = {
       body: JSON.stringify({ products }),
     }),
 
-  adminListPlans: (status?: string) =>
-    request<{
+  adminListPlans: (params?: { status?: string; userId?: string; page?: number; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (params?.userId) query.set("userId", params.userId);
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.limit) query.set("limit", String(params.limit));
+    const qs = query.toString();
+    return request<{
       plans: (ApiPlan & { user?: { _id: string; name: string; phone: string } })[];
-    }>(`/orders/plans${status ? `?status=${status}` : ""}`),
+      total: number;
+      page: number;
+      pages: number;
+    }>(`/orders/plans${qs ? `?${qs}` : ""}`);
+  },
 
   adminCreatePlan: (body: {
     userId: string;
@@ -336,4 +365,14 @@ export const api = {
 
   adminOnlineStatus: () =>
     request<{ online: unknown }>("/support/admin/online"),
+
+  uploadAuth: (purpose: "product" | "deposit-proof") =>
+    request<{
+      token: string;
+      expire: number;
+      signature: string;
+      publicKey: string;
+      urlEndpoint: string;
+      folder: string;
+    }>(`/uploads/auth?purpose=${encodeURIComponent(purpose)}`),
 };

@@ -117,6 +117,9 @@ const taskSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-taskSchema.index({ userId: 1, orderNumber: 1 }, { unique: true });
+// orderNumber က plan အတွင်းမှာပဲ unique — user တစ်ယောက်က plan အသစ်
+// (round ၂) စရင် orderNumber ၁ ပြန်ထပ်တယ်။ (userId, orderNumber) တင်
+// unique ဆက်ထားရင် generate သား E11000 နဲ့ ပျက်မယ်။
+taskSchema.index({ userId: 1, orderPlanId: 1, orderNumber: 1 }, { unique: true });
 
 module.exports = mongoose.model("Task", taskSchema);

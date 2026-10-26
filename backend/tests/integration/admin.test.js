@@ -495,7 +495,7 @@ describe("Admin & owner endpoints", () => {
       expect(parseFloat(updated.balance.toString())).toBeCloseTo(100, 2);
     });
 
-    it("rejects an oversized proof screenshot", async () => {
+    it("rejects a proof screenshot that is not an ImageKit URL", async () => {
       const user = await createUser("user");
 
       const res = await request(app)
@@ -504,7 +504,7 @@ describe("Admin & owner endpoints", () => {
         .send({
           type: "deposit",
           amount: "10.00",
-          proofScreenshot: "x".repeat(2_000_001),
+          proofScreenshot: "data:image/png;base64,abc",
         });
 
       expect(res.status).toBe(400);

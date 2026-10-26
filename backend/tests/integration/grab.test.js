@@ -141,7 +141,7 @@ describe("Grab / matching flow", () => {
     const res = await request(app)
       .post("/api/transactions")
       .set("Authorization", `Bearer ${makeToken(user)}`)
-      .send({ type: "deposit", amount, proofScreenshot: "data:image/png;base64,iVBORw0KGgo=" });
+      .send({ type: "deposit", amount, proofScreenshot: "https://ik.imagekit.io/testid/deposit-proofs/proof.png" });
     return res.body.transaction;
   };
 
@@ -436,6 +436,27 @@ describe("Grab / matching flow", () => {
 
     // the old tasks stay, the new plan has none yet
     expect(await Task.countDocuments({ userId: user._id })).toBe(3);
+
+    // round 2 must actually generate — the old check rejected it because the
+    // user still had round-1 tasks
+    const generated2 = await apiGenerate(
+      admin,
+      plan2.body.plan._id,
+      await apiAccept(admin, (await apiDeposit(user, "1000.00"))._id),
+    );
+    expect(generated2.status).toBe(201);
+    expect(await Task.countDocuments({ userId: user._id })).toBe(6);
+
+    // round 2's counters see only round 2
+    const summary = await apiSummary(user);
+    expect(summary.totalOrderNumber).toBe(3);
+    expect(summary.remainingCount).toBe(3);
+    expect(summary.completedCount).toBe(0);
+
+    const orders = await request(app)
+      .get("/api/tasks/orders")
+      .set("Authorization", `Bearer ${makeToken(user)}`);
+    expect(orders.body.tasks).toHaveLength(0);
   });
 
   it("cannot match without a plan", async () => {

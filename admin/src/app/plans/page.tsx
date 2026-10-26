@@ -25,6 +25,9 @@ export default function AdminPlansPage() {
   const [users, setUsers] = useState<ApiAdminUser[]>([]);
   const [transactions, setTransactions] = useState<ApiTransaction[]>([]);
   const [products, setProducts] = useState<ApiProduct[]>([]);
+  const [plansMeta, setPlansMeta] = useState({ page: 1, pages: 1, total: 0 });
+  const [currentPage, setCurrentPage] = useState(1);
+  const [selectorLoading, setSelectorLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -38,27 +41,61 @@ export default function AdminPlansPage() {
   const [tasks, setTasks] = useState<ApiTask[]>([]);
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
 
-  const load = useCallback(() => {
+  const load = useCallback((page = currentPage) => {
     setLoading(true);
     setError("");
 
-    Promise.all([
-      api.adminListPlans(),
-      api.adminListUsers({ limit: 200 }),
-      api.adminListTransactions(),
-      api.get<{ products: ApiProduct[] }>("/products"),
-    ])
-      .then(([planRes, userRes, txRes, productRes]) => {
+    api
+      .adminListPlans({ page, limit: 25 })
+      .then((planRes) => {
         setPlans(planRes.plans);
-        setUsers(userRes.users);
-        setTransactions(txRes.transactions);
-        setProducts(productRes.products);
+        setPlansMeta({
+          page: planRes.page,
+          pages: planRes.pages,
+          total: planRes.total,
+        });
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [currentPage]);
 
-  useEffect(load, [load]);
+  const loadSelectorData = useCallback(async (selectedUserId?: string) => {
+    if (users.length && products.length && transactions.length) return;
+
+    setSelectorLoading(true);
+    setError("");
+
+    try {
+      const requests: Promise<unknown>[] = [
+        users.length
+          ? Promise.resolve(null)
+          : api.adminListUsers({ limit: 200 }),
+        products.length
+          ? Promise.resolve(null)
+          : api.get<{ products: ApiProduct[] }>("/products"),
+      ];
+
+      if (selectedUserId) {
+        requests.push(
+          api.adminListTransactions({ type: "deposit", limit: 100 }),
+        );
+      }
+
+      const [userRes, productRes, txRes] = await Promise.all(requests);
+
+      if (userRes) setUsers((userRes as { users: ApiAdminUser[] }).users);
+      if (productRes) setProducts((productRes as { products: ApiProduct[] }).products);
+      if (txRes) setTransactions((txRes as { transactions: ApiTransaction[] }).transactions);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load selector data");
+    } finally {
+      setSelectorLoading(false);
+    }
+  }, [products.length, transactions.length, users.length]);
+
+  useEffect(() => {
+    load(currentPage);
+  }, [currentPage, load]);
 
   const depositsFor = useCallback(
     (planUserId: string) => {
@@ -120,7 +157,7 @@ export default function AdminPlansPage() {
       setIsCreateOpen(false);
       setUserId("");
       setLuckyRows([]);
-      load();
+      load(currentPage);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Create failed");
     }
@@ -144,7 +181,7 @@ export default function AdminPlansPage() {
     try {
       await api.adminGeneratePlan(plan._id, accepted._id);
       setNotice(`Order #${plan.totalOrders} generated`);
-      load();
+      load(currentPage);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Generate failed");
     }
@@ -156,7 +193,7 @@ export default function AdminPlansPage() {
     setError("");
     try {
       await api.adminDeletePlan(plan._id);
-      load();
+      load(currentPage);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
     }
@@ -196,7 +233,7 @@ export default function AdminPlansPage() {
 
       const res = await api.adminListUserTasks(taskPlan?.userId ?? "", taskPlan?._id);
       setTasks(res.tasks);
-      load();
+      load(currentPage);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed");
     } finally {
@@ -219,12 +256,21 @@ export default function AdminPlansPage() {
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <button
-          onClick={() => setIsCreateOpen((v) => !v)}
+          onClick={() => {
+            const next = !isCreateOpen;
+            setIsCreateOpen(next);
+            if (next) void loadSelectorData(userId || undefined);
+          }}
           className="flex items-center gap-1.5 rounded-lg bg-[#ff6600] px-3 py-2 text-xs font-bold text-white transition hover:bg-orange-600"
         >
           <Plus size={16} />
           {t("admin.create")}
         </button>
+        {selectorLoading && (
+          <span className="text-xs font-semibold text-slate-500">
+            Loading form data...
+          </span>
+        )}
       </div>
 
       {isCreateOpen && (
@@ -235,7 +281,11 @@ export default function AdminPlansPage() {
               <select
                 data-testid="plan-user-select"
                 value={userId}
-                onChange={(e) => setUserId(e.target.value)}
+                onChange={(e) => {
+                  const nextUserId = e.target.value;
+                  setUserId(nextUserId);
+                  void loadSelectorData(nextUserId || undefined);
+                }}
                 className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal text-slate-700 outline-none focus:border-[#ff6600]"
               >
                 <option value="">—</option>
@@ -434,9 +484,33 @@ export default function AdminPlansPage() {
         </table>
       </div>
 
-      <p className="text-xs text-slate-400">
-        {plans.length} {t("admin.stats.plans")} · {transactions.length} tx
-      </p>
+      <div className="flex items-center justify-between text-xs text-slate-500">
+        <span>
+          {plansMeta.total} {t("admin.stats.plans")}
+        </span>
+
+        <div className="flex items-center gap-2">
+          <button
+            disabled={currentPage <= 1}
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold disabled:opacity-40"
+          >
+            {t("admin.back")}
+          </button>
+          <span>
+            {plansMeta.page} / {plansMeta.pages}
+          </span>
+          <button
+            disabled={currentPage >= plansMeta.pages}
+            onClick={() =>
+              setCurrentPage((p) => Math.min(plansMeta.pages, p + 1))
+            }
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold disabled:opacity-40"
+          >
+            {t("admin.refresh")}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

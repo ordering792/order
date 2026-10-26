@@ -11,8 +11,13 @@ const supportRoutes = require("./routes/supportRoutes");
 const productRoutes = require("./routes/productRoutes");
 const orderRoutes = require("./routes/orderRoutes");
 const adminRoutes = require("./routes/adminRoutes");
+const uploadRoutes = require("./routes/uploadRoutes");
 
 const app = express();
+
+// Railway/Render/load balancer နောက်မှာ req.ip က proxy address ဖြစ်သွားလို့
+// rate limiter က user အားလုံးကို IP တစ်ခုတည်းအဖြစ် မှတ်မိသွားမယ်။
+app.set("trust proxy", 1);
 
 app.disable("x-powered-by");
 app.use(helmet());
@@ -55,6 +60,7 @@ app.use("/api/support", supportRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/uploads", uploadRoutes);
 
 app.use((req, res) => {
   res.status(404).json({
@@ -63,12 +69,11 @@ app.use((req, res) => {
 });
 
 app.use((err, req, res, next) => {
-  console.error(err);
-
-  // 500 တွေမှာ internal error message ကို client ကို မပြဘူး။
   const status = err.status || 500;
 
+  // 500 တွေမှာ internal error message ကို client ကို မပြဘူး။ log ပဲ တင်မယ်။
   if (status >= 500) {
+    console.error(err);
     return res.status(status).json({ message: "Internal server error" });
   }
 

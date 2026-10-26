@@ -11,7 +11,7 @@ export interface ApiUser {
   status?: string;
   ownerId?: string | null;
   language?: string;
-  balance?: string;
+  balance?: MoneyValue;
   walletAddress?: string | null;
 }
 
@@ -19,7 +19,7 @@ export interface ApiTransaction {
   _id: string;
   userId: string | { _id: string; name: string; phone: string; walletAddress?: string | null };
   type: "deposit" | "withdraw";
-  amount: string;
+  amount: MoneyValue;
   status: "pending" | "accepted" | "rejected";
   proofScreenshot?: string | null;
   rejectionReason?: string | null;

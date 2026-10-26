@@ -1,4 +1,5 @@
 const { z } = require("zod");
+const mongoose = require("mongoose");
 const Announcement = require("../models/Annoncement");
 const asyncHandler = require("../utils/asyncHandler");
 
@@ -35,6 +36,11 @@ exports.list = asyncHandler(async (req, res) => {
 });
 
 exports.getById = asyncHandler(async (req, res) => {
+  // id မမှန်ရင် findById က BSONError ဖြင့် 500 ပြန်လို့ 400 အရင်ပေးမယ်။
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    return res.status(400).json({ message: "Invalid announcement ID" });
+  }
+
   const announcement = await Announcement.findById(req.params.id).populate(
     "userId",
     "name",

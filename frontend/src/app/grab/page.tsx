@@ -22,6 +22,7 @@ import { api, GrabOrder } from "../../lib/api";
 import { getSocket } from "../../lib/socket";
 import { useAuth } from "../../lib/auth";
 import { useT } from "../../lib/i18n";
+import { formatMoney } from "../../lib/money";
 
 interface GrabSummary {
   balance: string;
@@ -48,12 +49,6 @@ const EMPTY_SUMMARY: GrabSummary = {
   undoneCount: 0,
   activeOrder: null,
 };
-
-const money = (value: string | number) =>
-  Number(value || 0).toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
 
 export default function GrabPage() {
   const router = useRouter();
@@ -90,13 +85,23 @@ export default function GrabPage() {
     const socket = getSocket();
     if (!socket) return;
 
-    const refresh = () => loadSummary();
+    let refreshTimer: number | null = null;
+    const refresh = () => {
+      if (refreshTimer !== null) return;
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = null;
+        loadSummary();
+      }, 500);
+    };
 
     socket.on("order:completed", refresh);
     socket.on("order:submitted", refresh);
     socket.on("connect", refresh);
 
     return () => {
+      if (refreshTimer !== null) {
+        window.clearTimeout(refreshTimer);
+      }
       socket.off("order:completed", refresh);
       socket.off("order:submitted", refresh);
       socket.off("connect", refresh);
@@ -173,7 +178,7 @@ export default function GrabPage() {
             <div>
               <div className="text-2xl font-black text-[#ff6600] flex items-center">
                 <span className="text-base mr-0.5">$</span>
-                {money(summary.balance)}
+                {formatMoney(summary.balance)}
               </div>
               <span className="text-xs font-semibold text-gray-400">{t("grab.balance")}</span>
             </div>
@@ -217,13 +222,13 @@ export default function GrabPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <div className="text-base font-black text-gray-800">
-                  $ {money(summary.totalCommission)}
+                  $ {formatMoney(summary.totalCommission)}
                 </div>
                 <span className="text-xs font-semibold text-gray-400">{t("grab.totalCommission")}</span>
               </div>
               <div>
                 <div className="text-base font-black text-gray-800">
-                  $ {money(summary.freezeBalance)}
+                  $ {formatMoney(summary.freezeBalance)}
                 </div>
                 <span className="text-xs font-semibold text-gray-400">{t("grab.freezeBalance")}</span>
               </div>
@@ -235,7 +240,7 @@ export default function GrabPage() {
               </div>
               <div>
                 <div className="text-base font-black text-gray-800">
-                  $ {money(summary.balance)}
+                  $ {formatMoney(summary.balance)}
                 </div>
                 <span className="text-xs font-semibold text-gray-400">{t("grab.myBalance")}</span>
               </div>
@@ -360,19 +365,19 @@ export default function GrabPage() {
                 </div>
                 <div className="flex justify-between text-gray-600">
                   <span>{t("grab.price")}:</span>
-                  <span className="font-semibold text-gray-800">$ {money(activeProduct.price)}</span>
+                  <span className="font-semibold text-gray-800">$ {formatMoney(activeProduct.price)}</span>
                 </div>
                 <div className="flex justify-between text-gray-600">
                   <span>{t("grab.depositFunds")}:</span>
-                  <span className="font-semibold text-rose-500">$ {money(activeProduct.requireDeposit)}</span>
+                  <span className="font-semibold text-rose-500">$ {formatMoney(activeProduct.requireDeposit)}</span>
                 </div>
                 <div className="flex justify-between text-gray-600">
                   <span>{t("grab.estimatedProfit")}:</span>
-                  <span className="font-bold text-emerald-600">+ $ {money(activeProduct.profit)}</span>
+                  <span className="font-bold text-emerald-600">+ $ {formatMoney(activeProduct.profit)}</span>
                 </div>
                 <div className="border-t border-orange-200 pt-1.5 flex justify-between font-black text-gray-800 text-sm">
                   <span>{t("grab.totalAmount")}:</span>
-                  <span className="text-rose-500">$ {money(activeProduct.totalAmount)}</span>
+                  <span className="text-rose-500">$ {formatMoney(activeProduct.totalAmount)}</span>
                 </div>
               </div>
 
@@ -383,7 +388,7 @@ export default function GrabPage() {
                     <span>{t("grab.insufficientBalance")}</span>
                   </div>
                   <p className="text-[11px]">
-                    {t("grab.depositMore", { amount: money(shortBy) })}
+                    {t("grab.depositMore", { amount: formatMoney(shortBy) })}
                   </p>
                 </div>
               )}

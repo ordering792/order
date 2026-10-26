@@ -76,7 +76,7 @@ describe("Transaction endpoints", () => {
         .send({
           type: "deposit",
           amount: "500.00",
-          proofScreenshot: "screenshot.png",
+          proofScreenshot: "https://ik.imagekit.io/testid/deposit-proofs/screenshot.png",
         });
 
       expect(res.status).toBe(201);
@@ -97,10 +97,86 @@ describe("Transaction endpoints", () => {
         .send({
           type: "withdraw",
           amount: "200.00",
+          password: "password123",
         });
 
       expect(res.status).toBe(201);
       expect(res.body.transaction.type).toBe("withdraw");
+    });
+
+    it("rejects a withdraw without a password", async () => {
+      const user = await createUser();
+      await User.findByIdAndUpdate(user._id, {
+        walletAddress: "TUserWalletAddress123",
+      });
+      const token = makeToken(user);
+
+      const res = await request(app)
+        .post("/api/transactions")
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          type: "withdraw",
+          amount: "200.00",
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/password/i);
+    });
+
+    it("rejects a withdraw with an incorrect password", async () => {
+      const user = await createUser();
+      await User.findByIdAndUpdate(user._id, {
+        walletAddress: "TUserWalletAddress123",
+      });
+      const token = makeToken(user);
+
+      const res = await request(app)
+        .post("/api/transactions")
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          type: "withdraw",
+          amount: "200.00",
+          password: "wrongpassword",
+        });
+
+      expect(res.status).toBe(401);
+      expect(res.body.message).toMatch(/incorrect/i);
+    });
+
+    it("rejects a withdraw with a blank password", async () => {
+      const user = await createUser();
+      await User.findByIdAndUpdate(user._id, {
+        walletAddress: "TUserWalletAddress123",
+      });
+      const token = makeToken(user);
+
+      const res = await request(app)
+        .post("/api/transactions")
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          type: "withdraw",
+          amount: "200.00",
+          password: "   ",
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/password/i);
+    });
+
+    it("does not require a password for deposits", async () => {
+      const user = await createUser();
+      const token = makeToken(user);
+
+      const res = await request(app)
+        .post("/api/transactions")
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          type: "deposit",
+          amount: "500.00",
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.transaction.type).toBe("deposit");
     });
 
     it("rejects a withdraw without a wallet address", async () => {
@@ -113,6 +189,7 @@ describe("Transaction endpoints", () => {
         .send({
           type: "withdraw",
           amount: "200.00",
+          password: "password123",
         });
 
       expect(res.status).toBe(400);

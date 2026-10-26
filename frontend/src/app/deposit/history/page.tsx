@@ -8,6 +8,7 @@ import {
 import { api, ApiTransaction } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth";
 import { useT } from "../../../lib/i18n";
+import { formatMoney } from "../../../lib/money";
 import RequireAuth from "../../components/RequireAuth";
 
 export default function DepositHistoryPage() {
@@ -78,7 +79,7 @@ export default function DepositHistoryPage() {
                   <div className="text-right">
                     <span className="text-gray-400 block text-[10px]">{t("depositHistory.amount")}</span>
                     <span className="font-black text-rose-500 text-sm">
-                      ${parseFloat(item.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      ${formatMoney(item.amount)}
                     </span>
                   </div>
                 </div>

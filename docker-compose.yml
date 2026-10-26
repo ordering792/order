@@ -1,0 +1,92 @@
+# Local Docker verification for the three services.
+# backend/.env မှာ IMAGEKIT_* + JWT_SECRET တွေ ရှိထားရမယ် (env_file ဖတ်မယ်)။
+#
+#   docker compose up --build
+#   frontend http://localhost:3000   admin http://localhost:3001   backend http://localhost:5000/api/health
+#
+# MongoDB ကို single-node replica set အဖြစ် တင်ထားတာ သတိထား —
+# withdraw/approve/complete တွေ session.withTransaction သုံးလို့ standalone mongod မှာ fail ဖြစ်မယ်။
+
+services:
+  mongo:
+    image: mongo:7
+    container_name: order-mongo
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  # replica set ကို တစ်ခါတည်း init လုပ်မယ် (docker compose up တိုင်း idempotent)
+  mongo-init:
+    image: mongo:7
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: "no"
+    entrypoint:
+      - mongosh
+      - --host
+      - mongo
+      - --quiet
+      - --eval
+      - |
+        try {
+          rs.status();
+          print("replica set already initiated");
+        } catch (e) {
+          rs.initiate({ _id: "rs0", members: [{ _id: 0, host: "mongo:27017" }] });
+          print("replica set initiated");
+        }
+
+  backend:
+    build:
+      context: ./backend
+    container_name: order-backend
+    env_file:
+      - ./backend/.env
+    environment:
+      PORT: "5000"
+      # compose ထဲက replica set ကို သုံးမယ် — Atlas သုံးချင်ရင် backend/.env မှာ
+      # MONGODB_URI ကို environment တစ်ခါတည်း override လုပ်ပါ
+      MONGODB_URI: "mongodb://mongo:27017/order?replicaSet=rs0"
+      CLIENT_ORIGIN: "http://localhost:3000,http://localhost:3001"
+    ports:
+      - "5000:5000"
+    depends_on:
+      mongo-init:
+        condition: service_completed_successfully
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: "http://localhost:5000/api"
+    container_name: order-frontend
+    environment:
+      PORT: "3000"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+  admin:
+    build:
+      context: ./admin
+      args:
+        NEXT_PUBLIC_API_URL: "http://localhost:5000/api"
+    container_name: order-admin
+    environment:
+      PORT: "3000"
+    ports:
+      - "3001:3000"
+    depends_on:
+      - backend
+
+volumes:
+  mongo-data:

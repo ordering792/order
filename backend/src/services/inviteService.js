@@ -1,13 +1,16 @@
+const crypto = require("crypto");
 const User = require("../models/User");
 
 const CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 const CODE_LENGTH = 8;
 
+// Code တွေက downline နေရာချတဲ့ authorization material ဖြစ်လို့
+// Math.random (predictable) မသုံးဘူး။
 function generateInvitationCode() {
   let code = "";
 
   for (let i = 0; i < CODE_LENGTH; i += 1) {
-    code += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
+    code += CODE_ALPHABET[crypto.randomInt(CODE_ALPHABET.length)];
   }
 
   return code;

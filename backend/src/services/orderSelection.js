@@ -10,8 +10,12 @@ function projectedBaseCents(initialDepositCents, luckyPositions, orderNumber) {
   return base;
 }
 
+// Commission rate အတွက် ရင်းမြစ်တစ်ခုတည်း။ grabController ရဲ့ display
+// ကလည်း ဒီကိန်းကိုပဲ သုံးတယ် — နှစ်နေရာ ခွဲထည့်ထားလို့ မရ။
+const COMMISSION_BASIS_POINTS = 50n; // 0.50%
+
 function commissionCents(priceCents) {
-  return (priceCents * 5n + 500n) / 1000n;
+  return (priceCents * COMMISSION_BASIS_POINTS + 5000n) / 10000n;
 }
 
 function priceRangeForBase(baseCents) {
@@ -46,6 +50,7 @@ function selectProductsForRange(candidates, count, lo, hi) {
 }
 
 module.exports = {
+  COMMISSION_BASIS_POINTS,
   projectedBaseCents,
   commissionCents,
   priceRangeForBase,
