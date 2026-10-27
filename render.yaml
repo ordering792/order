@@ -1,0 +1,33 @@
+# Render Blueprint — backend service တစ်ခုတည်း။
+# Frontend + admin က Vercel ပေါ်မှာ deploy လုပ်မယ် — ဒီ Blueprint ထဲ မပါဘူး။
+# Render dashboard → New → Blueprint → repo ရွေးလိုက်ရုံနဲ့ ဒီ config အတိုင်း ဆောက်ပေးမယ်။
+services:
+  - type: web
+    name: order-backend
+    runtime: node
+    rootDir: backend
+    plan: free # အမြဲဖွင့်ထားချင်ရင် starter ပြောင်းပါ — free က 15 မိနစ် idle ရင် ပိတ်မယ်
+    region: singapore # Myanmar ကနေ အနီးဆုံး region
+    buildCommand: npm ci
+    startCommand: node src/server.js
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: NODE_ENV
+        value: production
+      - key: JWT_EXPIRES_IN
+        value: 1d
+      - key: JWT_SECRET
+        generateValue: true # random secret ထုတ်ပေးမယ် — password manager ထဲ save ထားပါ
+      - key: MONGODB_URI
+        sync: false # Atlas connection string (password URL-encode + DB name အဆုံးသတ်ပါရမယ်)
+      - key: CLIENT_ORIGIN
+        sync: false # Vercel domain ၂ ခု comma ခွဲ — README ရဲ့ အဆင့် 2 ကို ကြည့်ပါ
+      - key: IMAGEKIT_PUBLIC_KEY
+        sync: false
+      - key: IMAGEKIT_PRIVATE_KEY
+        sync: false
+      - key: IMAGEKIT_URL_ENDPOINT
+        sync: false
