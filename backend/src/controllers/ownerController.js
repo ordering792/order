@@ -64,13 +64,14 @@ exports.listOwners = asyncHandler(async (req, res) => {
     .select(
       "name phone invitationCode ownerInviteCode status cryptoAddress cryptoQrUrl createdAt",
     )
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .lean();
 
   const ownersWithStats = await Promise.all(
     owners.map(async (owner) => {
       const userCount = await User.countDocuments({ ownerId: owner._id });
       return {
-        ...owner.toObject(),
+        ...owner,
         userCount,
       };
     }),

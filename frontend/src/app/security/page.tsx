@@ -4,12 +4,14 @@
 import { useState } from "react";
 import Link from "next/link";
 import {
-  ChevronLeft, Lock, ShieldCheck, CheckCircle,
+  ChevronLeft, Lock, ShieldCheck,
   Home, ClipboardList, Headphones, User
 } from "lucide-react";
 import { api, ApiError } from "../../lib/api";
 import { useT } from "../../lib/i18n";
+import { useToast } from "../../lib/useToast";
 import RequireAuth from "../components/RequireAuth";
+import Toast from "../components/Toast";
 
 export default function SecurityPage() {
   const t = useT();
@@ -17,13 +19,8 @@ export default function SecurityPage() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
-  const [toast, setToast] = useState<{ show: boolean; message: string }>({ show: false, message: "" });
+  const { toast, showToast } = useToast();
   const [isSaving, setIsSaving] = useState(false);
-
-  const showToast = (message: string) => {
-    setToast({ show: true, message });
-    setTimeout(() => setToast({ show: false, message: "" }), 2500);
-  };
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,10 +59,7 @@ export default function SecurityPage() {
       <div className="w-full max-w-[500px] h-screen bg-white shadow-2xl flex flex-col justify-between relative overflow-hidden">
 
         {/* Toast Notification */}
-        <div className={`fixed top-5 left-1/2 -translate-x-1/2 bg-gray-900/95 text-white text-xs px-4 py-2.5 rounded-xl shadow-2xl flex items-center space-x-2 z-50 transition-all duration-300 ${toast.show ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-          <CheckCircle className="text-emerald-400" size={16} />
-          <span>{toast.message}</span>
-        </div>
+        <Toast toast={toast} compact />
 
         {/* Top Navbar */}
         <div className="w-full bg-white px-4 py-3 flex justify-between items-center border-b shadow-sm z-30 shrink-0">

@@ -95,10 +95,12 @@ exports.listMyConversations = asyncHandler(async (req, res) => {
     ? { userId: req.customer.userId }
     : { guestId: req.customer.guestId };
 
-  const conversations = await Conversation.find(filter).sort({
-    lastMessageAt: -1,
-    createdAt: -1,
-  });
+  const conversations = await Conversation.find(filter)
+    .sort({
+      lastMessageAt: -1,
+      createdAt: -1,
+    })
+    .lean();
 
   res.json({ conversations });
 });
@@ -120,7 +122,8 @@ exports.getConversation = asyncHandler(async (req, res) => {
 
   const messages = await Message.find({ conversationId: conversation._id })
     .sort({ createdAt: 1 })
-    .limit(200);
+    .limit(200)
+    .lean();
 
   res.json({ conversation, messages });
 });
@@ -245,7 +248,8 @@ exports.adminListConversations = asyncHandler(async (req, res) => {
     .populate("ownerId", "name phone")
     .sort({ lastMessageAt: -1, createdAt: -1 })
     .skip((page - 1) * limit)
-    .limit(limit);
+    .limit(limit)
+    .lean();
 
   res.json({ conversations, total, page, limit });
 });
@@ -277,7 +281,8 @@ exports.adminGetConversation = asyncHandler(async (req, res) => {
 
   const messages = await Message.find({ conversationId: conversation._id })
     .sort({ createdAt: 1 })
-    .limit(200);
+    .limit(200)
+    .lean();
 
   res.json({ conversation, messages });
 });
@@ -429,12 +434,7 @@ exports.adminMarkRead = asyncHandler(async (req, res) => {
 });
 
 exports.getOnlineStatus = asyncHandler(async (req, res) => {
-  const {
-    isUserOnline,
-    isGuestOnline,
-    onlineUsers,
-    onlineGuests,
-  } = require("../socket");
+  const { onlineUsers, onlineGuests } = require("../socket");
 
   res.json({
     totalOnline: onlineUsers.size + onlineGuests.size,

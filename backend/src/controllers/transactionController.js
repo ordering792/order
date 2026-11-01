@@ -6,6 +6,7 @@ const User = require("../models/User");
 const OrderPlan = require("../models/OrderPlan");
 const asyncHandler = require("../utils/asyncHandler");
 const { toCents, decimal, fromCents } = require("../utils/money");
+const { ownerUserIds } = require("../services/ownershipService");
 const { emitToAdmins } = require("../socket");
 const { normalizePassword } = require("../utils/phone");
 const { isImageKitUrl } = require("./uploadController");
@@ -65,7 +66,10 @@ exports.create = asyncHandler(async (req, res) => {
     const valid = await bcrypt.compare(withdrawalPassword, user.passwordHash);
 
     if (!valid) {
-      return res.status(401).json({
+      // 401 မသုံးရ — frontend က 401 ကို "token ပျက်" အဖြစ် မြင်ပြီး
+      // session ရှင်းပြီး user ကို logout လုပ်ချလိုက်တယ်။ Authentication
+      // (JWT) က အောင်မြင်နေပြီးသားဖြစ်လို့ ဒါက input validation error ပဲ။
+      return res.status(400).json({
         message: "Incorrect password",
       });
     }
@@ -114,7 +118,9 @@ exports.create = asyncHandler(async (req, res) => {
 exports.myTransactions = asyncHandler(async (req, res) => {
   const transactions = await Transaction.find({
     userId: req.user._id,
-  }).sort({ createdAt: -1 });
+  })
+    .sort({ createdAt: -1 })
+    .lean();
 
   res.json({ transactions });
 });
@@ -134,10 +140,7 @@ exports.adminList = asyncHandler(async (req, res) => {
 
   // Owner က ကိုယ့် downline user တွေရဲ့ transaction တွေကိုသာ မြင်ရမယ်။
   if (req.user.role === "owner") {
-    const ownerUserIds = await User.find({ ownerId: req.user._id }).distinct(
-      "_id",
-    );
-    filter.userId = { $in: ownerUserIds };
+    filter.userId = { $in: await ownerUserIds(req.user._id) };
   }
 
   const [transactions, total] = await Promise.all([
@@ -146,7 +149,8 @@ exports.adminList = asyncHandler(async (req, res) => {
       .populate("reviewedBy", "name")
       .sort({ createdAt: -1, _id: -1 })
       .skip((page - 1) * limit)
-      .limit(limit),
+      .limit(limit)
+      .lean(),
     Transaction.countDocuments(filter),
   ]);
 
@@ -185,10 +189,9 @@ exports.adminDepositSummary = asyncHandler(async (req, res) => {
   let scopedIds = userIds;
 
   if (req.user.role === "owner") {
-    const ownerUserIds = await User.find({ ownerId: req.user._id }).distinct(
-      "_id",
+    const allowed = new Set(
+      (await ownerUserIds(req.user._id)).map((id) => String(id)),
     );
-    const allowed = new Set(ownerUserIds.map((id) => String(id)));
     scopedIds = userIds.filter((id) => allowed.has(id));
     filter.userId = { $in: scopedIds };
   }
@@ -207,7 +210,8 @@ exports.adminDepositSummary = asyncHandler(async (req, res) => {
   const transactions = await Transaction.find(filter)
     .sort({ createdAt: -1, _id: -1 })
     .limit(500)
-    .select("userId amount status allocation");
+    .select("userId amount status allocation")
+    .lean();
 
   // Round တစ်ခုမှာ အသုံးပြုပြီးသား deposit တွေကို အသစ် round အတွက်
   // ပြန်သုံးလို့ မရဘူး။

@@ -4,13 +4,15 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  User, Copy, CheckCircle, DollarSign, Wallet, MessageSquare,
+  User, Copy, DollarSign, Wallet, MessageSquare,
   History, CreditCard, Lock, LogOut, ChevronRight,
   Home, ClipboardList, Headphones, UserPlus
 } from "lucide-react";
 import { useAuth } from "../../lib/auth";
 import { useT } from "../../lib/i18n";
 import { moneyNumber } from "../../lib/money";
+import { useToast } from "../../lib/useToast";
+import Toast from "../components/Toast";
 
 function MenuItem({ icon, label, href }: { icon: React.ReactNode, label: string, href: string }) {
   return (
@@ -29,7 +31,7 @@ function MenuItem({ icon, label, href }: { icon: React.ReactNode, label: string,
 export default function ProfilePage() {
   const { user, logout } = useAuth();
   const t = useT();
-  const [toast, setToast] = useState<{ show: boolean; message: string }>({ show: false, message: "" });
+  const { toast, showToast } = useToast();
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [logoutCountdown, setLogoutCountdown] = useState(3);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -45,11 +47,6 @@ export default function ProfilePage() {
   }, []);
 
   // Balance ကို auth provider ကနေ ယူပါတယ် — mount တိုင်း /auth/me ထပ်ခေါ်မလို
-
-  const showToast = (message: string) => {
-    setToast({ show: true, message });
-    setTimeout(() => setToast({ show: false, message: "" }), 2500);
-  };
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -81,10 +78,7 @@ export default function ProfilePage() {
     <div className="bg-[#1e293b] flex justify-center items-center min-h-screen m-0 p-0 overflow-hidden">
       <div className="w-full max-w-[500px] h-screen bg-white shadow-2xl flex flex-col justify-between relative overflow-hidden">
 
-        <div className={`fixed top-5 left-1/2 -translate-x-1/2 bg-gray-900/95 text-white text-xs px-4 py-2.5 rounded-xl shadow-2xl flex items-center space-x-2 z-50 transition-all duration-300 ${toast.show ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-          <CheckCircle className="text-emerald-400" size={16} />
-          <span>{toast.message}</span>
-        </div>
+                <Toast toast={toast} compact />
 
         <div className="flex-1 overflow-y-auto w-full relative custom-scrollbar bg-gray-50 pb-20">
 

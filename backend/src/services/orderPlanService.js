@@ -7,6 +7,7 @@ const { toCents } = require("../utils/money");
 const { httpError } = require("../utils/httpError");
 const { isDuplicateKeyError } = require("../utils/duplicateKey");
 const { emitToAdmins } = require("../socket");
+const { ownerUserIds } = require("./ownershipService");
 
 async function assertTargetUser(userId, actor) {
   const user = await User.findById(userId);
@@ -123,10 +124,16 @@ async function createPlan({ userId, totalOrders, luckyPositions }, actor) {
       })),
     });
   } catch (err) {
-    // A database created before multi-round plans still carries the old unique
-    // userId_1 index, so a second round fails at the index rather than at the
-    // guard above. Without this it surfaces as an opaque 500.
     if (isDuplicateKeyError(err)) {
+      // Race ကြောင့် partial unique index (one_active_plan_per_user) က E11000
+      // ပြန်ရင် — guard message နဲ့ တူတဲ့ 409 အနေနဲ့ ပြန်ပေးမယ်။
+      if (String(err.message || "").includes("one_active_plan_per_user")) {
+        throw httpError(409, "User already has an order plan");
+      }
+
+      // A database created before multi-round plans still carries the old unique
+      // userId_1 index, so a second round fails at the index rather than at the
+      // guard above. Without this it surfaces as an opaque 500.
       throw httpError(
         409,
         "This database still has the legacy unique index on order plans — run scripts/migrate-orderplan-index.js once",
@@ -238,10 +245,7 @@ async function listPlans(filters) {
   }
 
   if (filters.ownerId) {
-    const ownerUserIds = await User.find({ ownerId: filters.ownerId }).distinct(
-      "_id",
-    );
-    query.userId = { $in: ownerUserIds };
+    query.userId = { $in: await ownerUserIds(filters.ownerId) };
   }
 
   const [plans, total] = await Promise.all([
@@ -249,7 +253,8 @@ async function listPlans(filters) {
       .populate("userId", "name phone")
       .sort({ createdAt: -1, _id: -1 })
       .skip((page - 1) * limit)
-      .limit(limit),
+      .limit(limit)
+      .lean(),
     OrderPlan.countDocuments(query),
   ]);
 

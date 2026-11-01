@@ -30,7 +30,8 @@ exports.create = asyncHandler(async (req, res) => {
 exports.list = asyncHandler(async (req, res) => {
   const announcements = await Announcement.find()
     .populate("userId", "name")
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .lean();
 
   res.json({ announcements });
 });

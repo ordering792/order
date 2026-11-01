@@ -180,7 +180,7 @@ exports.list = asyncHandler(async (req, res) => {
     filter.price = { ...filter.price, $lte: decimal(cents) };
   }
 
-  const products = await Product.find(filter).sort({ price: 1, _id: 1 });
+  const products = await Product.find(filter).sort({ price: 1, _id: 1 }).lean();
 
   res.json({ products });
 });

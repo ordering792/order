@@ -5,7 +5,7 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   ChevronLeft, ChevronDown, Wallet, Lock,
-  CheckCircle, Home, ClipboardList, Headphones, User
+  Home, ClipboardList, Headphones, User
 } from "lucide-react";
 import CountryLanguageModal from "../components/CountryLanguageModal";
 import { getStoredLang } from "../../lib/language";
@@ -13,7 +13,9 @@ import { api, ApiError } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { useT } from "../../lib/i18n";
 import { moneyNumber } from "../../lib/money";
+import { useToast } from "../../lib/useToast";
 import RequireAuth from "../components/RequireAuth";
+import Toast from "../components/Toast";
 
 export default function WithdrawPage() {
   const { user } = useAuth();
@@ -22,16 +24,11 @@ export default function WithdrawPage() {
   const [password, setPassword] = useState<string>("");
   const [isLangModalOpen, setIsLangModalOpen] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState(getStoredLang);
-  const [toast, setToast] = useState<{ show: boolean; message: string }>({ show: false, message: "" });
+  const { toast, showToast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const totalAvailable = moneyNumber(user?.balance);
   const boundWallet = user?.walletAddress || "";
-
-  const showToast = (message: string) => {
-    setToast({ show: true, message });
-    setTimeout(() => setToast({ show: false, message: "" }), 2500);
-  };
 
   const handleMaxAmount = () => {
     setAmount(totalAvailable.toFixed(2));
@@ -80,10 +77,7 @@ export default function WithdrawPage() {
     <div className="bg-[#1e293b] flex justify-center items-center min-h-screen m-0 p-0 overflow-hidden">
       <div className="w-full max-w-[500px] h-screen bg-white shadow-2xl flex flex-col justify-between relative overflow-hidden">
 
-        <div className={`fixed top-5 left-1/2 -translate-x-1/2 bg-gray-900/95 text-white text-xs px-5 py-3 rounded-2xl shadow-2xl flex items-center space-x-2.5 z-50 transition-all duration-300 ${toast.show ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-          <CheckCircle className="text-emerald-400" size={18} />
-          <span>{toast.message}</span>
-        </div>
+        <Toast toast={toast} />
 
         <div className="w-full bg-white px-4 py-3 flex justify-between items-center border-b shadow-sm z-30 shrink-0">
           <Link href="/" className="text-gray-700 flex items-center">

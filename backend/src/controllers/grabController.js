@@ -3,13 +3,14 @@ const { z } = require("zod");
 const Task = require("../models/Task");
 const Transaction = require("../models/Transaction");
 const User = require("../models/User");
-const OrderPlan = require("../models/OrderPlan");
 const WalletLedger = require("../models/WalletLedger");
 const asyncHandler = require("../utils/asyncHandler");
 const { toCents, decimal } = require("../utils/money");
 const { httpError } = require("../utils/httpError");
 const { COMMISSION_BASIS_POINTS } = require("../services/orderSelection");
+const { getMyPlan } = require("../services/orderPlanService");
 const { emitToUser } = require("../socket");
+const { WALLET_NOTES } = require("../constants/walletNotes");
 
 const ratingSchema = z
   .object({
@@ -49,13 +50,6 @@ function serializeGrabTask(task, luckyPosition) {
   };
 }
 
-async function getUserPlan(userId) {
-  return (
-    (await OrderPlan.findOne({ userId, status: { $ne: 'completed' } }).sort({ createdAt: -1 })) ||
-    (await OrderPlan.findOne({ userId }).sort({ createdAt: -1 }))
-  );
-}
-
 async function getLuckyPosition(plan, orderNumber) {
   if (!plan) return null;
   return (
@@ -69,7 +63,7 @@ async function getLuckyPosition(plan, orderNumber) {
 const AVAILABLE_STATUSES = ["available", "pending"];
 
 async function countSummary(userId) {
-  const plan = await getUserPlan(userId);
+  const plan = await getMyPlan(userId);
   const totalOrders = plan?.totalOrders ?? 0;
   // Plan ရှိရင် ဒီ plan ရဲ့ task တွေကိုပဲ ရေတွက်တယ် — မပြီးတဲ့ round က
   // count တွေက ယခင် round တွေနဲ့ ရောသွားလို့ မရဘူး။ plan မရှိတဲ့ legacy
@@ -103,7 +97,7 @@ exports.grabSummary = asyncHandler(async (req, res) => {
         $match: {
           userId: req.user._id,
           type: "credit",
-          note: "Task commission",
+          note: WALLET_NOTES.TASK_COMMISSION,
         },
       },
       { $group: { _id: null, total: { $sum: "$amount" } } },
@@ -262,7 +256,7 @@ exports.submit = asyncHandler(async (req, res) => {
 
 // /orders page — match/submit လုပ်ပြီးနောက် order list (assigned + completed သာ)
 exports.myOrders = asyncHandler(async (req, res) => {
-  const plan = await getUserPlan(req.user._id);
+  const plan = await getMyPlan(req.user._id);
 
   const tasks = await Task.find({
     userId: req.user._id,

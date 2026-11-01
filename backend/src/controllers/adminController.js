@@ -6,6 +6,7 @@ const Transaction = require("../models/Transaction");
 const OrderPlan = require("../models/OrderPlan");
 const asyncHandler = require("../utils/asyncHandler");
 const { escapeRegExp } = require("../utils/regex");
+const { ownerUserIds } = require("../services/ownershipService");
 
 const listUsersSchema = z.object({
   search: z.string().max(100).optional(),
@@ -25,11 +26,6 @@ const updateUserSchema = z
   .refine((data) => Object.keys(data).length > 0, {
     message: "No updates provided",
   });
-
-// Owner က ကိုယ့် downline user တွေကိုသာ မြင်ရမယ်။
-async function ownerUserIds(ownerId) {
-  return User.find({ ownerId }).distinct("_id");
-}
 
 exports.listUsers = asyncHandler(async (req, res) => {
   const parsed = listUsersSchema.safeParse(req.query);
@@ -67,7 +63,8 @@ exports.listUsers = asyncHandler(async (req, res) => {
       )
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
-      .limit(limit),
+      .limit(limit)
+      .lean(),
     User.countDocuments(filter),
   ]);
 
@@ -242,5 +239,3 @@ exports.stats = asyncHandler(async (req, res) => {
 
   res.json({ stats });
 });
-
-exports.ownerUserIds = ownerUserIds;
