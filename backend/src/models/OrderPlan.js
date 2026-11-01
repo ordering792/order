@@ -87,4 +87,20 @@ const orderPlanSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+// User တစ်ယောက်မှာ active plan (draft/generated) တစ်ခုပဲ ရှိရမယ်။
+// createPlan ရဲ့ findOne guard က check-then-insert race ကို မကာနိုင်လို့
+// (admin နှစ်ယောက် တစ်ပြိုင်နက် နှိပ်ရင် active plan နှစ်ခု ထွက်နိုင်တယ်) —
+// DB level မှာ partial unique index နဲ့ အပြီးအစီး ပိတ်တယ်။
+// completed plan တွေက filter ထဲ မပါလို့ round ၂၊ ၃ ဖန်တီးလို့ ရနိုင်တယ်။
+orderPlanSchema.index(
+  { userId: 1 },
+  {
+    unique: true,
+    name: "one_active_plan_per_user",
+    partialFilterExpression: {
+      $or: [{ status: "draft" }, { status: "generated" }],
+    },
+  },
+);
+
 module.exports = mongoose.model("OrderPlan", orderPlanSchema);

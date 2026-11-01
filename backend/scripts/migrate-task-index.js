@@ -6,11 +6,12 @@ require("dotenv").config();
 const mongoose = require("mongoose");
 const connectDB = require("../src/config/database");
 const Task = require("../src/models/Task");
+const { currentIndexes } = require("./lib/schemaIndexes");
 
 (async () => {
   await connectDB();
 
-  const indexes = await Task.collection.indexes();
+  const indexes = await currentIndexes(Task);
   console.log("before:", JSON.stringify(indexes.map((i) => i.key)));
 
   await Task.collection.dropIndex("userId_1_orderNumber_1").catch((err) => {

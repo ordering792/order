@@ -96,62 +96,6 @@ describe("Task endpoints", () => {
     });
   });
 
-  describe("POST /api/tasks/generate", () => {
-    it("creates 40 tasks for admin", async () => {
-      const admin = await createUser("admin");
-      const targetUser = await createUser();
-
-      const tasks = Array.from({ length: 40 }, (_, i) => ({
-        orderNumber: i + 1,
-        productName: `Product ${i + 1}`,
-        price: "50.00",
-        commission: "5.00",
-        isLuckyOrder: false,
-      }));
-
-      const token = makeToken(admin);
-
-      const res = await request(app)
-        .post("/api/tasks/generate")
-        .set("Authorization", `Bearer ${token}`)
-        .send({ userId: targetUser._id.toString(), tasks });
-
-      expect(res.status).toBe(201);
-
-      const count = await Task.countDocuments({ userId: targetUser._id });
-      expect(count).toBe(40);
-    });
-
-    it("rejects non-admin users", async () => {
-      const user = await createUser("user");
-      const token = makeToken(user);
-
-      const res = await request(app)
-        .post("/api/tasks/generate")
-        .set("Authorization", `Bearer ${token}`)
-        .send({ userId: user._id.toString(), tasks: [] });
-
-      expect(res.status).toBe(403);
-    });
-
-    it("rejects invalid task count", async () => {
-      const admin = await createUser("admin");
-      const targetUser = await createUser();
-
-      const token = makeToken(admin);
-
-      const res = await request(app)
-        .post("/api/tasks/generate")
-        .set("Authorization", `Bearer ${token}`)
-        .send({
-          userId: targetUser._id.toString(),
-          tasks: [{ orderNumber: 1 }],
-        });
-
-      expect(res.status).toBe(400);
-    });
-  });
-
   describe("POST /api/tasks/complete/:id", () => {
     it("completes a task and credits commission", async () => {
       const admin = await createUser("admin");

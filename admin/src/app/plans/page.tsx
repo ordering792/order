@@ -134,13 +134,19 @@ export default function AdminPlansPage() {
     void loadPlans(currentPage);
   }, [currentPage, loadPlans]);
 
-  // Socket event တွေက ရောက်တာနဲ့ ချက်ချင်း ပြန်ဖတ်မယ်။
+  // Socket event တွေက ရောက်တာနဲ့ ချက်ချင်း ပြန်ဖတ်မယ်။ Event အများကြီး
+  // ဆက်တိုက် ရောက်ရင် request burst မဖြစ်အောင် debounce လုပ်မယ်။
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
 
+    let refreshTimer: number | null = null;
     const handler = () => {
-      void refresh();
+      if (refreshTimer !== null) return;
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = null;
+        void refresh();
+      }, 500);
     };
 
     const events = [
@@ -158,6 +164,9 @@ export default function AdminPlansPage() {
     socket.on("connect", handler);
 
     return () => {
+      if (refreshTimer !== null) {
+        window.clearTimeout(refreshTimer);
+      }
       for (const event of events) socket.off(event, handler);
       socket.off("connect", handler);
     };

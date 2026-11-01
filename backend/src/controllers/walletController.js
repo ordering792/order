@@ -2,6 +2,7 @@ const { z } = require("zod");
 const User = require("../models/User");
 const WalletLedger = require("../models/WalletLedger");
 const asyncHandler = require("../utils/asyncHandler");
+const { WALLET_NOTES } = require("../constants/walletNotes");
 
 const cryptoAddressSchema = z.object({
   cryptoAddress: z.string().min(10).max(100),
@@ -91,7 +92,7 @@ exports.profits = asyncHandler(async (req, res) => {
   const commissionMatch = {
     userId: req.user._id,
     type: "credit",
-    note: "Task commission",
+    note: WALLET_NOTES.TASK_COMMISSION,
   };
 
   const [total, today, yesterday, team] = await Promise.all([
@@ -117,7 +118,7 @@ exports.profits = asyncHandler(async (req, res) => {
         $match: {
           userId: req.user._id,
           type: "credit",
-          note: "Referral bonus",
+          note: WALLET_NOTES.REFERRAL_BONUS,
         },
       },
       { $group: { _id: null, total: { $sum: "$amount" } } },

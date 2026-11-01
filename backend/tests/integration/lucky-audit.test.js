@@ -539,7 +539,8 @@ describe("Lucky order + order generation audit", () => {
       .post("/api/transactions")
       .set(authed(user))
       .send({ type: "withdraw", amount: "10.00", password: "nope-nope-nope" });
-    expect(wrongPassword.status).toBe(401);
+    // 400 — 401 ဖြစ်ရင် client က session ဖျက်ပြီး logout လုပ်ချလိုက်တယ်
+    expect(wrongPassword.status).toBe(400);
 
     await accept(admin, withdrawOk.body.transaction);
     expect(cents((await summary(user)).balance)).toBe(

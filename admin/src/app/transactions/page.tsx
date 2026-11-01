@@ -36,10 +36,8 @@ export default function AdminTransactionsPage() {
       .finally(() => setLoading(false));
   }, [status, type, page]);
 
-  useEffect(() => {
-    setPage(1);
-  }, [status, type]);
-
+  // Filter ပြောင်းတိုင်း page ကို 1 ပြန်ရောက်မယ် — setPage ကို onChange ထဲမှာ
+  // တွဲပြီး လုပ်တယ် (separate effect သုံးရင် load နှစ်ခါ ပြေးပြီး flicker ဖြစ်တယ်)။
   useEffect(load, [load]);
 
   const accept = async (tx: ApiTransaction) => {
@@ -77,7 +75,10 @@ export default function AdminTransactionsPage() {
       <div className="flex flex-wrap gap-2">
         <select
           value={status}
-          onChange={(e) => setStatus(e.target.value)}
+          onChange={(e) => {
+            setStatus(e.target.value);
+            setPage(1);
+          }}
           className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600"
         >
           <option value="">{t("admin.field.status")}: —</option>
@@ -88,7 +89,10 @@ export default function AdminTransactionsPage() {
 
         <select
           value={type}
-          onChange={(e) => setType(e.target.value)}
+          onChange={(e) => {
+            setType(e.target.value);
+            setPage(1);
+          }}
           className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600"
         >
           <option value="">{t("admin.field.type")}: —</option>
