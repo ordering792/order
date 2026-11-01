@@ -359,7 +359,7 @@ describe("Customer service: user to owner routing", () => {
   it("admin sees all conversations", async () => {
     const owner = await createUser("owner", { ownerInviteCode: "OVW1" });
     const user = await createUser("user", { ownerId: owner._id });
-    const guestConv = await Conversation.create({ guestId: "guest-x" });
+    await Conversation.create({ guestId: "guest-x" });
 
     await request(app)
       .post("/api/support/conversations")

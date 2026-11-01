@@ -7,6 +7,8 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "seed:products": "node scripts/seed-products.js",
+    "migrate": "node scripts/migrate.js",
+    "lint": "eslint .",
     "test": "node scripts/run-jest.js --coverage --runInBand"
   },
   "keywords": [],
@@ -26,6 +28,9 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "globals": "^17.13.0",
     "jest": "^30.2.0",
     "mongodb-memory-server": "^9.5.0",
     "nodemon": "^3.1.14",

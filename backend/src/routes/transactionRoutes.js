@@ -2,7 +2,6 @@ const router = require("express").Router();
 const controller = require("../controllers/transactionController");
 const {
   auth,
-  adminOnly,
   adminOrOwner,
 } = require("../middleware/authMiddleware");
 

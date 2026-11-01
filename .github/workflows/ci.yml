@@ -1,0 +1,141 @@
+# Push / PR တိုင်းမှာ သုံး service လုံး စစ်မယ် — backend integration tests (real mongod
+# replica set), frontend + admin typecheck + jest။
+#
+# Playwright e2e က ဒီမှာ မrun ဘူး — dev server ၂ ခု + live backend လိုလို့ local မှာပဲ
+# (README ရဲ့ e2e အပိုင်း) run ပါ။
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: backend (integration + unit)
+    runs-on: ubuntu-latest
+
+    # withdraw approve / order complete တွေက session.withTransaction သုံးလို့
+    # replica set မဖြစ်မနေ လိုတယ် — docker-compose.yml နဲ့ တစ်ပုံစံတည်း।
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: --replSet rs0 --bind_ip_all
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Initiate single-node replica set
+        run: |
+          cid=$(docker ps --quiet --filter ancestor=mongo:7 | head -1)
+
+          for i in $(seq 1 30); do
+            docker exec "$cid" mongosh --quiet --eval 'db.adminCommand({ping:1}).ok' | grep -q 1 && break
+            sleep 2
+          done
+
+          docker exec "$cid" mongosh --quiet --eval '
+            try { rs.status().ok } catch (e) {
+              rs.initiate({ _id: "rs0", members: [{ _id: 0, host: "localhost:27017" }] });
+            }'
+
+          for i in $(seq 1 30); do
+            docker exec "$cid" mongosh --quiet --eval 'db.adminCommand({hello:1}).isWritablePrimary' | grep -q true && {
+              echo "replica set primary ready"; exit 0; }
+            sleep 2
+          done
+
+          echo "mongod never became primary" >&2
+          exit 1
+
+      # globalSetup က ဒီ two vars တွေပါရင် mongodb-memory-server ကို လုံးဝ မသုံးတော့ဘူး
+      # (binary download / distro detection ပြဿနာ CI မှာ မရှိအောင်)။
+      - name: Run tests
+        env:
+          TEST_USE_ATLAS: "1"
+          TEST_MONGODB_URI: mongodb://127.0.0.1:27017/order_ci_test?replicaSet=rs0
+        run: npm test
+
+  frontend:
+    name: frontend (tsc + jest)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Unit tests
+        run: npx jest --coverage=false
+
+      # လက်ရှိ 8 errors ရှိနေသေးတယ် — ရှင်းပြီးရင် continue-on-error ဖျက်ပါ။
+      - name: Lint (non-blocking until clean)
+        continue-on-error: true
+        run: npm run lint
+
+  admin:
+    name: admin (tsc + jest)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: admin
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: admin/package-lock.json
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Unit tests
+        run: npx jest --coverage=false
+
+      # လက်ရှိ 13 errors ရှိနေသေးတယ် — ရှင်းပြီးရင် continue-on-error ဖျက်ပါ။
+      - name: Lint (non-blocking until clean)
+        continue-on-error: true
+        run: npm run lint

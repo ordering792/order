@@ -19,7 +19,6 @@ const app = require("../../src/app");
 const User = require("../../src/models/User");
 const Product = require("../../src/models/Product");
 const Task = require("../../src/models/Task");
-const Transaction = require("../../src/models/Transaction");
 const OrderPlan = require("../../src/models/OrderPlan");
 
 const JWT_SECRET = process.env.JWT_SECRET || "test-secret";
@@ -365,7 +364,6 @@ describe("Grab / matching flow", () => {
 
   it("creates as many orders as the admin asked for", async () => {
     const admin = await createUser("admin");
-    const user = await createUser();
 
     await apiSeedProducts(25);
 

@@ -2,7 +2,7 @@ require("dotenv").config();
 const mongoose = require("mongoose");
 const connectDB = require("../src/config/database");
 const Product = require("../src/models/Product");
-const { toCents, decimal } = require("../src/utils/money");
+const { decimal } = require("../src/utils/money");
 
 const ADJECTIVES = [
   "Wireless",

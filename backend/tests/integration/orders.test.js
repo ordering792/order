@@ -22,7 +22,6 @@ const Task = require("../../src/models/Task");
 const Product = require("../../src/models/Product");
 const OrderPlan = require("../../src/models/OrderPlan");
 const Transaction = require("../../src/models/Transaction");
-const { decimal } = require("../../src/utils/money");
 
 const JWT_SECRET = process.env.JWT_SECRET || "test-secret";
 
@@ -349,9 +348,54 @@ describe("Order plan setup (POST /api/orders/plans)", () => {
     }
 
     const indexes = await OrderPlan.collection.indexes();
-    expect(
-      indexes.some((index) => index.unique && index.key?.userId === 1),
-    ).toBe(false);
+    // Full unique userId index ကျန်ခွင့်မရှိ — partial unique
+    // (one_active_plan_per_user) ကတော့ race guard အဖြစ် ရှိနေရမယ်။
+    const fullUnique = indexes.find(
+      (index) =>
+        index.unique && index.key?.userId === 1 && !index.partialFilterExpression,
+    );
+    expect(fullUnique).toBeUndefined();
+  });
+
+  it("blocks a second active plan at the database level (create race guard)", async () => {
+    const user = await createUser();
+
+    await OrderPlan.create({
+      userId: user._id,
+      totalOrders: 3,
+      luckyPositions: [],
+    });
+
+    // HTTP guard (findOne) က check-then-insert race ကို မကာနိုင်လို့
+    // partial unique index က နောက်ဆုံး ပိတ်ရမယ် — E11000 ထွက်ရမယ်။
+    let duplicateRejected = false;
+
+    try {
+      await OrderPlan.create({
+        userId: user._id,
+        totalOrders: 5,
+        luckyPositions: [],
+      });
+    } catch (err) {
+      duplicateRejected =
+        err.code === 11000 &&
+        String(err.message || "").includes("one_active_plan_per_user");
+    }
+
+    expect(duplicateRejected).toBe(true);
+
+    // Plan ပြီးရင် slot လွတ်ပြီး နောက် round ဖန်တီးလို့ ရမယ်။
+    await OrderPlan.updateOne(
+      { userId: user._id },
+      { status: "completed" },
+    );
+
+    const round2 = await OrderPlan.create({
+      userId: user._id,
+      totalOrders: 2,
+      luckyPositions: [],
+    });
+    expect(round2.status).toBe("draft");
   });
 
   it("rejects a plan when user already has tasks", async () => {
@@ -1138,12 +1182,15 @@ describe("Balance-based generation (no deposit transaction)", () => {
     expect(firstPrice).toBeGreaterThanOrEqual(240);
     expect(firstPrice).toBeLessThanOrEqual(300);
 
-    // Lucky order 2 နဲ့ နောက်ပိုင်း base = 300 + 50 = 350
+    // Lucky order 2 ရဲ့ ကိုယ်ပိုင် deposit က order 3 ကနေစမှ base ထဲ ပါမယ်
+    // (projectedBaseCents = "position < orderNumber" — unit test + admin UI
+    // နဲ့ တူညီတယ်)။ ဒါကြောင့် order 2 ရဲ့ band က base 300 ရဲ့ 80–100% =
+    // [240, 300] ပဲ ဖြစ်ရမယ်။
     const lucky = tasks.find((t) => t.orderNumber === 2);
     expect(lucky.isLuckyOrder).toBe(true);
     const luckyPrice = parseFloat(lucky.price.toString());
-    expect(luckyPrice).toBeGreaterThanOrEqual(280);
-    expect(luckyPrice).toBeLessThanOrEqual(350);
+    expect(luckyPrice).toBeGreaterThanOrEqual(240);
+    expect(luckyPrice).toBeLessThanOrEqual(300);
 
     for (const task of tasks.filter((t) => t.orderNumber > 2)) {
       const price = parseFloat(task.price.toString());
@@ -1633,7 +1680,7 @@ describe("Generation survives a legacy database", () => {
     const user = await createUser();
 
     const { planId } = await setupGeneratedPlan(admin, user, { totalOrders: 2 });
-    const depositTx = await makeDeposit(user._id, "500.00");
+    await makeDeposit(user._id, "500.00");
 
     // Round 1 is finished, so the admin may open round 2.
     await Task.updateMany({ orderPlanId: planId }, { $set: { status: "completed" } });

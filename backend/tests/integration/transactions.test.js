@@ -140,7 +140,9 @@ describe("Transaction endpoints", () => {
           password: "wrongpassword",
         });
 
-      expect(res.status).toBe(401);
+      // 401 မဟုတ်ဘူး — wrong password က user session ကို မဖျက်ရ (bug fix:
+      // အရင်က 401 ပြန်လို့ client က logout လုပ်ချလိုက်တယ်)။
+      expect(res.status).toBe(400);
       expect(res.body.message).toMatch(/incorrect/i);
     });
 
@@ -360,7 +362,7 @@ describe("Transaction endpoints", () => {
       });
 
       // 120 ခုက အသစ် transaction တွေ — adminList က နောက်ဆုံး ၁၀၀ ခုပဲ ပြန်ရတယ်။
-      const noise = Array.from({ length: 120 }, (_, index) => ({
+      const noise = Array.from({ length: 120 }, () => ({
         userId: user._id,
         type: "withdraw",
         amount: "10.00",

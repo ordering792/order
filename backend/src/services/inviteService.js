@@ -20,7 +20,6 @@ function generateInvitationCode() {
 async function createUniqueCode(field) {
   let code = generateInvitationCode();
 
-  // eslint-disable-next-line no-await-in-loop
   while (await User.findOne({ [field]: code })) {
     code = generateInvitationCode();
   }

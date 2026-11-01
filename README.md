@@ -119,11 +119,15 @@ Render free plan မှာ Shell မရှိလို့ scripts တွေက�
 
 ```bash
 cd backend
-MONGODB_URI="mongodb+srv://.../order_management" node scripts/migrate-task-index.js
-MONGODB_URI="mongodb+srv://.../order_management" node scripts/migrate-orderplan-index.js
+# migration အကုန် လိုက်ဦးစားပေးအစဉ်အတိုင်း run (ထပ်run ချင်း safe)
+MONGODB_URI="mongodb+srv://.../order_management" npm run migrate
+# ဘာကျန်လဲ အရင်ကြည့်ချင်ရင် (DB ဘာမှမပြောင်းဘူး)
+MONGODB_URI="mongodb+srv://.../order_management" npm run migrate -- --status
 # DB အသစ်လုံးဝဆိုရင် ပထမ admin:
 MONGODB_URI="mongodb+srv://.../order_management" node scripts/create-admin.js --phone 09xxxxxxxxx
 ```
+
+`npm run migrate` က `scripts/migrate.js` runner — `migrate-task-status.js` → `migrate-task-index.js` → `migrate-orderplan-index.js` အစဉ်အတိုင်း run ပြီး၊ ဖြစ်ပြီးသား နာမည်တွေကို Mongo collection `schemamigrations` မှာ မှတ်ထားလို့ နောက်တစ်ခါ run တော့ skip ဖြစ်မယ် (အစိတ်အပိုင်းတစ်ခု fail ရင် ရပ်တန့်မယ်၊ မှတ်တမ်း မတင်ဘူး)။ အသေးစိတ်က အောက်က "DB migrations" section။
 
 ### 6. Render သတိထားစရာတွေ
 
@@ -184,34 +188,30 @@ node scripts/create-admin.js --phone 09xxxxxxxxx
 ```
 `scripts/` ကို image ထဲ COPY လုပ်ထားလို့ exec မှာ တိုက်ရိုက်ရတယ်။
 
-### 5. Index migration (DB အသစ်မဟုတ်ရင် လုပ်ရမယ်)
+### 5. DB migration (DB အသစ်မဟုတ်ရင် လုပ်ရမယ်)
 
-`Task` ရဲ့ unique index က `(userId, orderNumber)` ကနေ `(userId, orderPlanId, orderNumber)` ပြောင်းလိုက်တယ် — plan အသစ် (round ၂) စတင်ရင် orderNumber ၁ ပြန်ထပ်လို့ E11000 ဖြစ်နေလို့။ Mongoose က index အသစ် တင်ပေမယ့် **အဟောင်းကို မဖျက်ဘူး**၊ ရှိပြီးသား DB ဆို `generate` က 500 တက်မယ်။ Exec container ထဲမှာ:
+Schema ပြောင်းတဲ့အခါ Mongoose က index အသစ် တင်ပေမယ့် **အဟောင်းကို မဖျက်ဘူး** — ရှိပြီးသား DB ဆို round ၂ generate/create က E11000 နဲ့ fail ဖြစ်တယ် (API က `409 This database still has the legacy unique index...` နဲ့ ရှင်းရှင်းလင်းလင်း ငြင်းတယ် — 500 stack dump မထွက်တော့ဘူး)။ Exec container ထဲမှာ runner တစ်ခါတည်း run ပါ:
 
 ```bash
-node scripts/migrate-task-index.js
+npm run migrate            # အကုန် (အစဉ်လိုက်)
+npm run migrate -- --status # ဘာကျန်လဲ ကြည့်ရုံ၊ DB မပြောင်းဘူး
 ```
 
-OrderPlan မှာလည်း အလားတူ problem ရှိတယ် — အရင် schema က `userId` ကို **unique** တင်ထားခဲ့တယ်၊ round ၂ ကို ခွင့်ပြုဖို့ ပြောင်းလိုက်ပေမယ့် Mongoose က အဟောင်း index ကို မဖျက်သေးဘူး။ ရှိပြီးသား DB မှာ အခုလို တွေ့ရမယ်:
+Runner က `scripts/migrate.js` — အစိတ်အပိုင်းတစ်ခုချင်းစီ (`migrate-task-status.js`၊ `migrate-task-index.js`၊ `migrate-orderplan-index.js`) ကို idempotent လုပ်ထားလို့ ပြန်run ချင်း safe ပါ။ အသေးစိတ်က အထက်က Render section နဲ့ အောက်က "DB migrations" section။
+
+**Task** — unique index က `(userId, orderNumber)` ကနေ `(userId, orderPlanId, orderNumber)` ပြောင်းလိုက်တယ်၊ plan အသစ် (round ၂) မှာ orderNumber ၁ ပြန်ထပ်လို့ E11000 ဖြစ်နေလို့။
+
+```
+E11000 duplicate key error collection: <db>.tasks index: userId_1_orderNumber_1
+```
+
+**OrderPlan** — အရင် schema က `userId` ကို **unique** တင်ထားခဲ့တယ်၊ round ၂ ကို ခွင့်ပြုဖို့ ပြောင်းလိုက်ပေမယ့် အဟောင်း index က ကျန်နေတယ်။ Admin panel မှာ plan ထပ်ဖန်တီးရင် "Internal server error" + terminal ထဲ:
 
 ```
 E11000 duplicate key error collection: <db>.orderplans index: userId_1
 ```
 
-Admin panel မှာ order plan ထပ်ဖန်တီးရင် "Internal server error" တက်ပြီး terminal ထဲ အထက်ပါ error ပါရင် —
-
-```bash
-node scripts/migrate-orderplan-index.js
-```
-
-တစ်ခါ run ပါ (script ကိုယ်တိုင်က before/after index list ပြမယ်)။ Run မတင်ခင် plan ဖန်တီးခြင်းက `409 This database still has the legacy unique index...` နဲ့ ရှင်းရှင်းလင်းလင်း ငြင်းခံရပါပြီ — 500 နဲ့ stack dump မထွက်တော့ဘူး။
-
-Task index ကလည်း အလားတူ — round ၂ ကို generate လုပ်တဲ့အခါ (Admin → "Generate orders") orderNumber ၁ ပြန်ထပ်လို့ E11000 ဖြစ်ပြီး အခု `409 This database still has the legacy unique index on tasks...` နဲ့ ရှင်းသပ်ပေးမယ်။ ဒါကြောင့် **နှစ်ခုလုံး** run ပါ (အစဉ်မရှိဘူး — ဘယ်ကြိုက်မဆို ပြန် run ချင်း safe ပါ)။
-
-```bash
-node scripts/migrate-task-index.js
-node scripts/migrate-orderplan-index.js
-```
+**Task status** — `migrate-task-status.js` က legacy `status: "pending"` rows တွေကို `available` ပြောင်းပေးတယ် (`updateMany` — ထပ်run လည်း 0 modified နဲ့ ငြိမ်တယ်)။ Code က `AVAILABLE_STATUSES = ["available", "pending"]` (`src/controllers/grabController.js:70`) နဲ့ ခဏ compat ထားထားလို့ မrun ရင်လည်း order page မပျက်ဘူး — ဒါပေမယ့် prod DB မှာ migration confirm ပြီးမှ `"pending"` ကို ထုတ်ချမယ်၊ ဒါကြောင့် ထုတ်မချခင် **မသွားဖျက်နဲ့**။
 
 **Order round base (deposit / balance)** — generate လုပ်တဲ့အခါ base နှစ်မျိုး ရှိတယ် (`src/services/orderGenerationService.js`):
 
@@ -254,12 +254,45 @@ node scripts/create-admin.js --phone 09xxxxxxxxx
 curl http://localhost:5000/api/health
 ```
 
+## DB migrations
+
+Index/schema ပြောင်းတိုင်း ရှိပြီးသား DB အတွက် one-off script လိုတယ် (Mongoose က index အသစ်တင်ပေမယ့် အဟောင်းကို မဖျက်ဘူး)။ Script တစ်ခုချင်း manual run မလုပ်တော့ဘဲ runner သုံးပါ:
+
+```bash
+cd backend
+npm run migrate              # pending တွေကို အစဉ်လိုက် run + မှတ်တမ်းတင်
+npm run migrate -- --status   # applied/pending စာရင်းပဲ ပြမယ် (DB မပြောင်းဘူး)
+```
+
+ဘယ်လိုအလုပ်လုပ်လဲ (`scripts/migrate.js`):
+
+- **အစဉ်** — `migrate-task-status` → `migrate-task-index` → `migrate-orderplan-index`။ Data ပြောင်းတဲ့ script ကို index sync အရင် run မယ်။
+- **မှတ်တမ်း** — collection `schemamigrations` (`name` unique index) ထဲ `{ name, appliedAt }` ထည့်တယ်၊ run ပြီးသား name ကို skip တယ်။
+- **fail ရပ်** — script တစ်ခု exit non-zero ဆို ရပ်တန့်တယ်၊ မှတ်တမ်း မတင်ဘူး၊ နောက်တွေ မrun ဘူး — ပြင်ပြီး ပြန်run လိုက်ရင် resume ဖြစ်မယ်။
+- **idempotent** — runner မသိမီ ကိုယ်တိုင် run ပြီးသား DB အတွက် script တွေက `dropIndex` skip + `syncIndexes`/`updateMany` နဲ့ ထပ်run ချင်း ဘေးကင်းတယ်။
+- **fresh DB** — collection မရှိသေးရင် index read က `ns does not exist` (code 26/27) တက်တယ်၊ `scripts/lib/schemaIndexes.js` ရဲ့ `currentIndexes()` ကို သုံးထားလို့ ကျော်ဖြတ်တယ်။
+
+Migration အသစ်ထည့်ရင် — `scripts/` ထဲ idempotent script တစ်ခုရေးပြီး `migrate.js` ရဲ့ `MIGRATIONS` array မှာ နာမည်+ဖိုင်ကို အစဉ်လိုက် additive append ပါ (အရင် entry တွေကို မပျက်စီးစေနဲ့)။ Production DB (`order_management`) မှာ run ချိန် `MONGODB_URI` ကို ကိုယ်တိုင် explicit set လုပ်ပါ — မှားယွင်း DB ကို မထိစေဖို့။
+
+## CI
+
+`.github/workflows/ci.yml` — push / PR တိုင်း ၃ job parallel run:
+
+| Job | အဆင့် |
+| --- | --- |
+| `backend` | `mongo:7` service (single-node replica set ကို step အလိုက် `rs.initiate`) + `npm run lint` (blocking) + `TEST_USE_ATLAS=1` နဲ့ `npm test` — `session.withTransaction` တွေအတွက် replica set မဖြစ်မနေ လို |
+| `frontend` / `admin` | `npm ci` → `npx tsc --noEmit` → `npx jest --coverage=false` → `npm run lint` |
+
+- **lint က non-blocking** (`continue-on-error`) — ပစ္စုပ္ပန် pre-existing errors frontend 8 / admin 13 ရှိနေလို့၊ သန့်စင်တဲ့ PR တွေမှာ အသစ်ထပ်မဖြစ်အောင် သတိထားရုံ။
+- CI မှာ monorepo အပြည့် checkout ဖြစ်လို့ sibling app ရှိနေမယ် — `frontend` ⇄ `admin` byte-identical shared-file guard (`src/lib/__tests__/shared-files.test.ts`) အမှန်တကယ် compare ဖြစ်မယ်; sibling မတွေ့ရင် skip မဖြစ်ဘဲ test fail ဖြစ်အောင် ရေးထားတယ်။
+- Playwright e2e က CI မှာ မပါ — backend + dev server တွေ live run တင်ရလို့။
+
 ## Tests
 
 ```bash
-cd backend  && npm test    # 261 tests / 15 suites (jest + replica-set MongoDB)
-cd frontend && npm test    # 70 tests / 7 suites
-cd admin    && npm test    # 76 tests / 6 suites
+cd backend  && npm test    # 259 tests / 15 suites (jest + replica-set MongoDB)
+cd frontend && npm test    # 107 tests / 8 suites
+cd admin    && npm test    # 113 tests / 7 suites
 
 # browser e2e (Playwright — service တွေ run တင်ထားရမယ်)
 cd frontend && npm run test:e2e

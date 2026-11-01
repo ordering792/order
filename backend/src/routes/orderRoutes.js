@@ -2,7 +2,6 @@ const router = require("express").Router();
 const controller = require("../controllers/orderPlanController");
 const {
   auth,
-  adminOnly,
   adminOrOwner,
 } = require("../middleware/authMiddleware");
 

@@ -68,7 +68,7 @@ app.use((req, res) => {
   });
 });
 
-app.use((err, req, res, next) => {
+app.use((err, req, res, _next) => {
   const status = err.status || 500;
 
   // 500 တွေမှာ internal error message ကို client ကို မပြဘူး။ log ပဲ တင်မယ်။

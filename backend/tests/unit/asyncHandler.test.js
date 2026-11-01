@@ -2,7 +2,7 @@ const asyncHandler = require("../../src/utils/asyncHandler");
 
 describe("asyncHandler", () => {
   it("calls the wrapped function", async () => {
-    const fn = jest.fn((req, res, next) => {
+    const fn = jest.fn((req, res, _next) => {
       res.json({ ok: true });
     });
     const req = {};
