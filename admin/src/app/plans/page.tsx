@@ -279,7 +279,7 @@ export default function AdminPlansPage() {
           {t("admin.empty")}
         </p>
       ) : (
-        <div className="grid grid-cols-1 items-start gap-3 2xl:grid-cols-2">
+        <div className="grid grid-cols-1 items-start gap-3">
           {rows.map((row) => (
             <OrderUserCard
               key={`${row.user._id}:${row.plan?._id ?? "none"}:${row.plan?.totalOrders ?? 0}`}
