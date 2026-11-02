@@ -1,11 +1,47 @@
 // src/app/license/page.tsx
 "use client";
 
-import Link from "next/link";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { api, ApiError } from "../../lib/api";
+import { useAuth } from "../../lib/auth";
 import { useT } from "../../lib/i18n";
 
 export default function LicensePage() {
+  const router = useRouter();
+  const { user, loading } = useAuth();
   const t = useT();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  // Agreement ကို login ဝင်ပြီးသူပဲ လက်မှတ်ထိုးလို့ရတယ် — ဘယ်သူ လက်မှတ်ထိုးလဲ
+  // မသိရရင် backend မှာ မှတ်တမ်း တင်လို့မရဘူး။
+  useEffect(() => {
+    if (loading) return;
+    if (!user) {
+      router.replace("/login");
+      return;
+    }
+    if (user.licenseAcceptedAt) router.replace("/");
+  }, [loading, user, router]);
+
+  const handleAgree = async () => {
+    if (saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      await api.acceptLicense();
+      router.push("/");
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? err.message : t("auth.license.failed"),
+      );
+      setSaving(false);
+    }
+  };
+
+  if (loading || !user) return null;
+
   return (
     // ★ နောက်ခံကို bg-gray-900 အစား bg-[#1e293b] (Dark Slate) ပြောင်းထားပါတယ်
     <div className="bg-[#1e293b] flex justify-center items-center min-h-screen m-0 p-0 overflow-hidden">
@@ -94,12 +130,19 @@ export default function LicensePage() {
 
         {/* Bottom Action Button Area */}
         <div className="w-full bg-white border-t border-gray-100 p-4 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-30 shrink-0">
-          <Link 
-            href="/" 
-            className="block w-full text-center bg-gradient-to-r from-[#ff782d] to-[#ff5100] text-white py-3.5 rounded-full font-bold shadow-lg shadow-orange-500/30 hover:opacity-95 transition active:scale-[0.98]"
+          {error && (
+            <p className="mb-2 text-center text-xs font-bold text-red-500">
+              {error}
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={handleAgree}
+            disabled={saving}
+            className="block w-full text-center bg-gradient-to-r from-[#ff782d] to-[#ff5100] text-white py-3.5 rounded-full font-bold shadow-lg shadow-orange-500/30 hover:opacity-95 transition active:scale-[0.98] disabled:opacity-70"
           >
             {t("auth.license.agree")}
-          </Link>
+          </button>
         </div>
 
       </div>

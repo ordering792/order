@@ -21,7 +21,7 @@ const features: Dict[] = [
   sharedDict,
 ];
 
-const LANG_LIST: Lang[] = ["en", "es", "pt", "ar", "ur", "ja", "th", "ko", "zh"];
+const LANG_LIST: Lang[] = ["en", "es", "pt", "ar", "ja", "th", "ko", "zh"];
 
 export const dictionaries: Record<Lang, Record<string, string>> = LANG_LIST.reduce(
   (acc, l) => {

@@ -13,7 +13,7 @@ const features: Dict[] = [
   adminOrdersDict,
 ];
 
-const LANG_LIST: Lang[] = ["en", "es", "pt", "ar", "hi", "ja", "th", "ko", "zh"];
+const LANG_LIST: Lang[] = ["en", "es", "pt", "ar", "ja", "th", "ko", "zh"];
 
 export const dictionaries: Record<Lang, Record<string, string>> = LANG_LIST.reduce(
   (acc, l) => {

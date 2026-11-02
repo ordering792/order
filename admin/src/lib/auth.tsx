@@ -23,14 +23,14 @@ import { getToken } from "./api/client";
 interface AuthContextValue {
   user: ApiUser | null;
   loading: boolean;
-  login: (phone: string, password: string) => Promise<void>;
+  login: (phone: string, password: string) => Promise<ApiUser>;
   register: (input: {
     name: string;
     phone: string;
     password: string;
     invitationCode: string;
     referredByCode?: string;
-  }) => Promise<void>;
+  }) => Promise<ApiUser>;
   logout: () => void;
   refreshUser: () => Promise<void>;
 }
@@ -105,10 +105,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [refreshUser]);
 
+  // Server က ပြန်ပေးတဲ့ user ကို return ပြန်တယ် — context state မတင်မီ
+  // licenseAcceptedAt လို field တစ်ခုကို ကြည့်ပြီး route ခွဲချင်တဲ့ caller တွေ ရှိလို့။
   const login = useCallback(async (phone: string, password: string) => {
     const res = await api.login({ phone, password });
     storeSession(res.token, res.user);
     setUser(res.user);
+    return res.user;
   }, []);
 
   const register = useCallback(
@@ -122,6 +125,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await api.register(input);
       storeSession(res.token, res.user);
       setUser(res.user);
+      return res.user;
     },
     [],
   );

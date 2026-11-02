@@ -56,6 +56,9 @@ async function createUser(role = "user") {
       .substring(2, 8)
       .toUpperCase()}`,
     role,
+    // complete endpoint ကို requireLicense က 403 ပေးတယ် — စမ်းသပ် user တွေကို
+    // agreement လက်မှတ်ထိုးပြီးသား အဖြစ် ဖန်တီးတယ်။
+    licenseAcceptedAt: new Date(),
   });
 }
 

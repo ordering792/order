@@ -36,8 +36,8 @@ export default function LoginPage() {
     setError("");
     setIsLoading(true);
     try {
-      await login(phone.trim(), password.trim());
-      router.push("/license");
+      const account = await login(phone.trim(), password.trim());
+      router.push(account.licenseAcceptedAt ? "/" : "/license");
     } catch (err) {
       const message =
         err instanceof ApiError ? err.message : t("auth.login.failed");
@@ -65,6 +65,7 @@ export default function LoginPage() {
           <header className="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-4 pt-4">
             <button
               onClick={() => setIsCustomerServiceOpen(true)}
+              aria-label={t("auth.common.customerService")}
               className="flex h-10 w-10 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-sm transition hover:bg-black/40"
             >
               <Headphones size={20} />

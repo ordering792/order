@@ -13,6 +13,7 @@ export interface ApiUser {
   language?: string;
   balance?: MoneyValue;
   walletAddress?: string | null;
+  licenseAcceptedAt?: string | null;
 }
 
 export interface ApiTransaction {

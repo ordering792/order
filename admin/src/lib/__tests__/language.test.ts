@@ -13,7 +13,6 @@ describe("language helpers", () => {
       expect(flagCode("es")).toBe("es");
       expect(flagCode("pt")).toBe("br");
       expect(flagCode("ar")).toBe("sa");
-      expect(flagCode("hi")).toBe("in");
       expect(flagCode("ja")).toBe("jp");
       expect(flagCode("th")).toBe("th");
       expect(flagCode("ko")).toBe("kr");
@@ -42,7 +41,7 @@ describe("language helpers", () => {
   });
 
   describe("round-trip mapping", () => {
-    const langs = ["en", "es", "pt", "ar", "hi", "ja", "th", "ko", "zh"];
+    const langs = ["en", "es", "pt", "ar", "ja", "th", "ko", "zh"];
 
     langs.forEach((lang) => {
       it(`langCode(flagCode("${lang}")) === "${lang}"`, () => {
@@ -70,6 +69,11 @@ describe("language helpers", () => {
 
     it("returns DEFAULT_LANG for malformed stored value", () => {
       localStorage.setItem("language", "not-json");
+      expect(getStoredLang()).toEqual(DEFAULT_LANG);
+    });
+
+    it("returns DEFAULT_LANG when stored value lacks code", () => {
+      localStorage.setItem("language", JSON.stringify({ name: "English" }));
       expect(getStoredLang()).toEqual(DEFAULT_LANG);
     });
   });

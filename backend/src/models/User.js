@@ -47,6 +47,24 @@ const userSchema = new mongoose.Schema(
       maxlength: 300,
     },
 
+    // License ကို ပထမဆုံး အတည်ပြုတဲ့ အချိန် + အထောက်အထား။ နောက်ထပ် ခေါ်ရင်လည်း
+    // မူလ timestamp ကို မထိဘူး — တရားဝင် မှတ်တမ်းက ပထမ အကြိမ်ပဲ။
+    licenseAcceptedAt: {
+      type: Date,
+      default: null,
+    },
+
+    licenseIpAddress: {
+      type: String,
+      default: null,
+    },
+
+    licenseUserAgent: {
+      type: String,
+      default: null,
+      maxlength: 300,
+    },
+
     balance: {
       type: mongoose.Schema.Types.Decimal128,
       default: "0.00",
@@ -118,6 +136,9 @@ const userSchema = new mongoose.Schema(
       sparse: true,
     },
 
+    // "hi" ကို picker (config/languages.js) ကနေ ဖြုတ်ပြီးပြီ၊ ဒါပေမဲ့ enum ထဲမှာ
+    // ချန်ထားသေးတယ် — အဟောင်း row တွေမှာ language: "hi" ရှိနေရင် login တိုင်း
+    // user.save() က ValidationError ဖြစ်ပြီး အကောင့်ဝင်လို့ မရတော့ဘူးလို့။
     language: {
       type: String,
       enum: ["en", "es", "pt", "ar", "hi", "ja", "th", "ko", "zh"],

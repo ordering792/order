@@ -8,7 +8,6 @@ const FLAG_BY_LANG: Record<string, string> = {
   es: "es",
   pt: "br",
   ar: "sa",
-  hi: "in",
   ja: "jp",
   th: "th",
   ko: "kr",

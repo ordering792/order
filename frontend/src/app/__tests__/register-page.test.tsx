@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { LanguageProvider } from "@/lib/i18n";
 import RegisterPage from "@/app/register/page";
 
@@ -10,6 +10,19 @@ jest.mock("@/lib/auth", () => ({
   useAuth: () => ({ user: null, loading: false, register: jest.fn() }),
 }));
 
+jest.mock("@/lib/socket", () => ({ getSocket: () => null }));
+
+jest.mock("@/lib/api", () => ({
+  ApiError: class ApiError extends Error {},
+  getStoredUser: () => null,
+  api: {
+    myConversations: jest
+      .fn()
+      .mockResolvedValue({ conversations: [{ _id: "conv-1" }] }),
+    getConversation: jest.fn().mockResolvedValue({ messages: [] }),
+  },
+}));
+
 function renderPage() {
   return render(
     <LanguageProvider>
@@ -18,14 +31,20 @@ function renderPage() {
   );
 }
 
+beforeAll(() => {
+  // jsdom မှာ မရှိ — chat widget က message တစ်ချက်တိုင်း scroll ချတာ။
+  Element.prototype.scrollIntoView = jest.fn();
+});
+
 describe("register page guest entry", () => {
-  it("opens support as a guest from the header", () => {
+  it("opens support as a guest from the header widget", async () => {
     renderPage();
 
-    expect(screen.getByRole("link", { name: /guest chat/i })).toHaveAttribute(
-      "href",
-      "/support",
+    fireEvent.click(
+      screen.getByRole("button", { name: /customer service/i }),
     );
+
+    expect(await screen.findByText(/chatting as a guest/i)).toBeInTheDocument();
   });
 
   it("drops the back arrow so /login is only the footer sign-in link", () => {

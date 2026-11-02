@@ -45,6 +45,7 @@ function publicUser(user) {
     invitationCode: user.invitationCode,
     role: user.role,
     language: user.language || DEFAULT_LANGUAGE,
+    licenseAcceptedAt: user.licenseAcceptedAt || null,
   };
 }
 
@@ -153,7 +154,7 @@ exports.login = asyncHandler(async (req, res) => {
 
 exports.me = asyncHandler(async (req, res) => {
   const fullUser = await User.findById(req.user._id).select(
-    "balance walletAddress",
+    "balance walletAddress licenseAcceptedAt",
   );
 
   res.json({
@@ -167,8 +168,32 @@ exports.me = asyncHandler(async (req, res) => {
       language: req.user.language || DEFAULT_LANGUAGE,
       balance: fullUser?.balance ? fullUser.balance.toString() : "0.00",
       walletAddress: fullUser?.walletAddress || null,
+      licenseAcceptedAt: fullUser?.licenseAcceptedAt || null,
     },
   });
+});
+
+exports.acceptLicense = asyncHandler(async (req, res) => {
+  // ပထမ အကြိမ်ကိုပဲ မှတ်တယ် — ထပ်ခေါ်ရင် မူလ timestamp/IP ကို မပြောင်းဘူး။
+  const accepted = await User.findOneAndUpdate(
+    { _id: req.user._id, licenseAcceptedAt: null },
+    {
+      licenseAcceptedAt: new Date(),
+      licenseIpAddress: req.ip || null,
+      licenseUserAgent: (req.headers["user-agent"] || "").slice(0, 300) || null,
+    },
+    { returnDocument: "after", projection: { licenseAcceptedAt: 1 } },
+  );
+
+  if (accepted) {
+    return res.json({ licenseAcceptedAt: accepted.licenseAcceptedAt });
+  }
+
+  const existing = await User.findById(req.user._id).select(
+    "licenseAcceptedAt",
+  );
+
+  res.json({ licenseAcceptedAt: existing?.licenseAcceptedAt || null });
 });
 
 exports.updateLanguage = asyncHandler(async (req, res) => {

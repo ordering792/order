@@ -77,7 +77,7 @@ export default function DashboardPage() {
     return null;
   }
 
-  const balance = moneyNumber(user?.balance);
+  const balance = moneyNumber(user.balance);
 
   return (
     <div className="w-full bg-white">
@@ -112,28 +112,13 @@ export default function DashboardPage() {
       </div>
 
       <div className="px-4 -mt-6 relative z-10">
-        {user ? (
-          <div className="bg-white rounded-2xl p-5 shadow-lg border border-orange-100 flex flex-col space-y-1">
-            <h2 className="text-xl font-bold text-gray-800">{user.name}</h2>
-            <div className="text-3xl font-semibold text-rose-500 flex items-center">
-              <span className="mr-1">$</span> {balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-            </div>
-            <span className="text-xs font-semibold text-gray-400">{t("home.accountBalance")}</span>
+        <div className="bg-white rounded-2xl p-5 shadow-lg border border-orange-100 flex flex-col space-y-1">
+          <h2 className="text-xl font-bold text-gray-800">{user.name}</h2>
+          <div className="text-3xl font-semibold text-rose-500 flex items-center">
+            <span className="mr-1">$</span> {balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
           </div>
-        ) : (
-          <div className="bg-white rounded-2xl p-5 shadow-lg border border-orange-100 flex flex-col space-y-3">
-            <div className="flex items-center space-x-2 text-gray-500">
-              <Wallet size={18} className="text-[#ff6600]" />
-              <span className="text-sm font-semibold">{t("auth.guest.balanceNotice")}</span>
-            </div>
-            <Link
-              href="/login"
-              className="block w-full text-center bg-gradient-to-r from-[#ff782d] to-[#ff5100] text-white py-2.5 rounded-xl font-bold shadow-md hover:opacity-95 transition text-sm"
-            >
-              {t("auth.common.signIn")}
-            </Link>
-          </div>
-        )}
+          <span className="text-xs font-semibold text-gray-400">{t("home.accountBalance")}</span>
+        </div>
       </div>
 
       <div className="px-4 mt-4">
@@ -149,39 +134,20 @@ export default function DashboardPage() {
         <QuickAction icon={<Gift size={26} />} label={t("home.inviteFriends")} href="/invite" />
       </div>
 
-      {user ? (
-        <>
-          <div className="px-4 pt-2 pb-1 flex items-center space-x-2">
-            <div className="flex space-x-1">
-              <div className="w-1.5 h-5 bg-amber-500 rounded-full"></div>
-              <div className="w-1.5 h-5 bg-amber-400 rounded-full"></div>
-            </div>
-            <h2 className="text-base font-bold text-gray-800">{t("home.totalProfits")}</h2>
-          </div>
-
-          <div className="px-4 py-2 grid grid-cols-2 gap-3">
-            <ProfitCard title={t("home.todaysProfit")} amount={money(profits.today)} />
-            <ProfitCard title={t("home.yesterdaysProfit")} amount={money(profits.yesterday)} />
-            <ProfitCard title={t("home.totalProfits")} amount={money(profits.total)} />
-            <ProfitCard title={t("home.teamCommission")} amount={money(profits.team)} />
-          </div>
-        </>
-      ) : (
-        <div className="px-4 py-2">
-          <div className="bg-gray-50 border border-gray-100 rounded-2xl p-5 flex flex-col items-center text-center space-y-3">
-            <div className="w-12 h-12 rounded-full bg-orange-50 text-[#ff6600] flex items-center justify-center shadow-inner">
-              <CreditCard size={24} />
-            </div>
-            <span className="text-sm font-semibold text-gray-600">{t("auth.guest.profitNotice")}</span>
-            <Link
-              href="/login"
-              className="px-8 bg-gradient-to-r from-[#ff782d] to-[#ff5100] text-white py-2.5 rounded-full font-bold shadow-md hover:opacity-95 transition text-sm"
-            >
-              {t("auth.common.signIn")}
-            </Link>
-          </div>
+      <div className="px-4 pt-2 pb-1 flex items-center space-x-2">
+        <div className="flex space-x-1">
+          <div className="w-1.5 h-5 bg-amber-500 rounded-full"></div>
+          <div className="w-1.5 h-5 bg-amber-400 rounded-full"></div>
         </div>
-      )}
+        <h2 className="text-base font-bold text-gray-800">{t("home.totalProfits")}</h2>
+      </div>
+
+      <div className="px-4 py-2 grid grid-cols-2 gap-3">
+        <ProfitCard title={t("home.todaysProfit")} amount={money(profits.today)} />
+        <ProfitCard title={t("home.yesterdaysProfit")} amount={money(profits.yesterday)} />
+        <ProfitCard title={t("home.totalProfits")} amount={money(profits.total)} />
+        <ProfitCard title={t("home.teamCommission")} amount={money(profits.team)} />
+      </div>
 
       <div className="grid grid-cols-4 gap-2 px-4 py-4 text-center">
         <QuickAction icon={<FileText size={26} />} label={t("home.companyProfile")} href="#" small />

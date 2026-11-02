@@ -105,7 +105,7 @@ jobs:
       - name: Unit tests
         run: npx jest --coverage=false
 
-      # လက်ရှိ 8 errors ရှိနေသေးတယ် — ရှင်းပြီးရင် continue-on-error ဖျက်ပါ။
+      # လက်ရှိ 9 errors ရှိနေသေးတယ် — ရှင်းပြီးရင် continue-on-error ဖျက်ပါ။
       - name: Lint (non-blocking until clean)
         continue-on-error: true
         run: npm run lint
@@ -135,7 +135,7 @@ jobs:
       - name: Unit tests
         run: npx jest --coverage=false
 
-      # လက်ရှိ 13 errors ရှိနေသေးတယ် — ရှင်းပြီးရင် continue-on-error ဖျက်ပါ။
+      # လက်ရှိ 11 errors ရှိနေသေးတယ် — ရှင်းပြီးရင် continue-on-error ဖျက်ပါ။
       - name: Lint (non-blocking until clean)
         continue-on-error: true
         run: npm run lint

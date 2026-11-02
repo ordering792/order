@@ -29,13 +29,6 @@ export const sharedDict: Dict = {
     "nav.profile": "الملف الشخصي",
     "langModal.title": "اختيار اللغة / المنطقة",
   },
-  hi: {
-    "nav.home": "होम",
-    "nav.orders": "ऑर्डर",
-    "nav.support": "सहायता",
-    "nav.profile": "प्रोफ़ाइल",
-    "langModal.title": "भाषा / क्षेत्र चुनें",
-  },
   ja: {
     "nav.home": "ホーム",
     "nav.orders": "注文",

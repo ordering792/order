@@ -54,6 +54,10 @@ async function createUser(role = "user") {
       .substring(2, 8)
       .toUpperCase()}`,
     role,
+    // match/submit ကို requireLicense က 403 ပေးတယ် — စမ်းသပ် user တွေကို
+    // agreement လက်မှတ်ထိုးပြီးသား အဖြစ် ဖန်တီးတယ်။ Gate ကို သီးသန့် စစ်တဲ့
+    // test ကတော့ ဒီ field မပါဘဲ ဖန်တီးတယ်။
+    licenseAcceptedAt: new Date(),
   });
 }
 
@@ -479,5 +483,76 @@ describe("Grab / matching flow", () => {
       .send({});
 
     expect(res.status).toBe(409);
+  });
+});
+
+describe("User agreement gate", () => {
+  // Agreement မထိုးရသေးတဲ့ အခြေအနေကို ပြန်ဖန်တီးတယ် — field ကို လုံးဝ ဖျက်လိုက်တာက
+  // migration မတိုင်မီ user အဟောင်းတွေရဲ့ ပုံစံနဲ့ အတူတူပဲ။
+  const revokeLicense = (user) =>
+    User.updateOne({ _id: user._id }, { $unset: { licenseAcceptedAt: 1 } });
+
+  it("blocks matching before the agreement is accepted", async () => {
+    const user = await createUser();
+    await seedPlan(user, { totalOrders: 5 });
+    await revokeLicense(user);
+
+    const res = await request(app)
+      .post("/api/tasks/match")
+      .set("Authorization", `Bearer ${makeToken(user)}`);
+
+    expect(res.status).toBe(403);
+    expect(
+      await Task.countDocuments({ userId: user._id, assignedAt: { $ne: null } }),
+    ).toBe(0);
+  });
+
+  it("blocks submitting an already matched order", async () => {
+    const user = await createUser();
+    await seedPlan(user, { totalOrders: 5 });
+
+    const matched = await request(app)
+      .post("/api/tasks/match")
+      .set("Authorization", `Bearer ${makeToken(user)}`);
+    expect(matched.status).toBe(200);
+
+    await revokeLicense(user);
+
+    const res = await request(app)
+      .post(`/api/tasks/${matched.body.order.id}/submit`)
+      .set("Authorization", `Bearer ${makeToken(user)}`)
+      .send({ rating: 5 });
+
+    expect(res.status).toBe(403);
+    const task = await Task.findById(matched.body.order.id);
+    expect(task.submittedAt).toBeNull();
+  });
+
+  it("unlocks matching once the agreement endpoint is called", async () => {
+    const user = await createUser();
+    await seedPlan(user, { totalOrders: 5 });
+    await revokeLicense(user);
+
+    const accepted = await request(app)
+      .post("/api/auth/license-accept")
+      .set("Authorization", `Bearer ${makeToken(user)}`);
+    expect(accepted.status).toBe(200);
+
+    const res = await request(app)
+      .post("/api/tasks/match")
+      .set("Authorization", `Bearer ${makeToken(user)}`);
+
+    expect(res.status).toBe(200);
+  });
+
+  it("does not gate admins who never see the agreement", async () => {
+    const admin = await createUser("admin");
+    await revokeLicense(admin);
+
+    const res = await request(app)
+      .post("/api/tasks/match")
+      .set("Authorization", `Bearer ${makeToken(admin)}`);
+
+    expect(res.status).not.toBe(403);
   });
 });

@@ -14,6 +14,7 @@ const loginLimit = rateLimit({
 router.post("/register", authController.register);
 router.post("/login", loginLimit, authController.login);
 router.get("/me", auth, authController.me);
+router.post("/license-accept", auth, authController.acceptLicense);
 router.put("/language", auth, authController.updateLanguage);
 router.get("/languages", authController.getLanguages);
 router.put("/password", auth, authController.changePassword);

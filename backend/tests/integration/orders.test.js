@@ -57,6 +57,8 @@ async function createUser(role = "user", extra = {}) {
       .substring(2, 8)
       .toUpperCase()}`,
     role,
+    // requireLicense က match/submit/complete ကို တားလို့ default လက်မှတ်ထိုးပြီးထားတယ်။
+    licenseAcceptedAt: new Date(),
     ...extra,
   });
 }

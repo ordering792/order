@@ -21,7 +21,7 @@ async function auth(req, res, next) {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
 
     const user = await User.findById(payload.userId).select(
-      "_id role status phone name invitationCode tokenVersion",
+      "_id role status phone name invitationCode tokenVersion licenseAcceptedAt",
     );
 
     if (!user || user.status === "burned") {
@@ -45,8 +45,21 @@ async function auth(req, res, next) {
   }
 }
 
-function adminOnly(req, res, next) {
-  if (req.user?.role !== "admin") {
+// Agreement လက်မှတ် မထိုးရသေးသူကို order grab / task submit မလုပ်ခိုင်းဘူး။
+// Frontend redirect ကို URL တိုက်ရိုက်ဝင်ကျော်တာ ရှိလို့ တကယ့် အတားအဆီးက ဒီနေရာ။
+function requireLicense(req, res, next) {
+  if (["admin", "owner"].includes(req.user?.role)) return next();
+
+  if (!req.user?.licenseAcceptedAt) {
+    return res.status(403).json({
+      message: "User agreement acceptance required",
+    });
+  }
+
+  next();
+}
+
+function adminOnly(req, res, next) {  if (req.user?.role !== "admin") {
     return res.status(403).json({
       message: "Admin access required",
     });
@@ -75,4 +88,11 @@ function adminOrOwner(req, res, next) {
   next();
 }
 
-module.exports = { auth, adminOnly, ownerOnly, adminOrOwner, isTokenStale };
+module.exports = {
+  auth,
+  requireLicense,
+  adminOnly,
+  ownerOnly,
+  adminOrOwner,
+  isTokenStale,
+};

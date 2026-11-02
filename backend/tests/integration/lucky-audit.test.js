@@ -68,6 +68,8 @@ async function makeUser(role = "user", extra = {}) {
     passwordHash,
     invitationCode: `C${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
     role,
+    // requireLicense က match/submit/complete ကို တားလို့ default လက်မှတ်ထိုးပြီးထားတယ်။
+    licenseAcceptedAt: new Date(),
     ...extra,
   });
 }

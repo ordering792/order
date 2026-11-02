@@ -13,7 +13,6 @@ describe("language helpers", () => {
       expect(flagCode("es")).toBe("es");
       expect(flagCode("pt")).toBe("br");
       expect(flagCode("ar")).toBe("sa");
-      expect(flagCode("hi")).toBe("in");
       expect(flagCode("ja")).toBe("jp");
       expect(flagCode("th")).toBe("th");
       expect(flagCode("ko")).toBe("kr");
@@ -42,7 +41,7 @@ describe("language helpers", () => {
   });
 
   describe("round-trip mapping", () => {
-    const langs = ["en", "es", "pt", "ar", "hi", "ja", "th", "ko", "zh"];
+    const langs = ["en", "es", "pt", "ar", "ja", "th", "ko", "zh"];
 
     langs.forEach((lang) => {
       it(`langCode(flagCode("${lang}")) === "${lang}"`, () => {

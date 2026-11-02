@@ -3,7 +3,6 @@ const SUPPORTED_LANGUAGES = [
   { code: "es", name: "Español (Spain)", flag: "🇪🇸", dir: "ltr" },
   { code: "pt", name: "Português (Brazil)", flag: "🇧🇷", dir: "ltr" },
   { code: "ar", name: "العربية", flag: "🇸🇦", dir: "rtl" },
-  { code: "hi", name: "हिन्दी (India)", flag: "🇮🇳", dir: "ltr" },
   { code: "ja", name: "日本語", flag: "🇯🇵", dir: "ltr" },
   { code: "th", name: "ไทย", flag: "🇹🇭", dir: "ltr" },
   { code: "ko", name: "한국어", flag: "🇰🇷", dir: "ltr" },

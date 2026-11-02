@@ -103,6 +103,23 @@ describe("Auth endpoints", () => {
 
       expect(res.status).toBe(401);
     });
+
+    it("reports the license flag so the client can route to /license", async () => {
+      const fresh = await request(app)
+        .post("/api/auth/login")
+        .send({ phone: "09987654321", password: "password123" });
+      expect(fresh.body.user.licenseAcceptedAt).toBeNull();
+
+      await User.updateOne(
+        { phone: "09987654321" },
+        { licenseAcceptedAt: new Date("2026-02-02T00:00:00.000Z") },
+      );
+
+      const accepted = await request(app)
+        .post("/api/auth/login")
+        .send({ phone: "09987654321", password: "password123" });
+      expect(accepted.body.user.licenseAcceptedAt).toBeTruthy();
+    });
   });
 
   describe("GET /api/auth/me", () => {
@@ -126,6 +143,100 @@ describe("Auth endpoints", () => {
 
     it("rejects without token", async () => {
       const res = await request(app).get("/api/auth/me");
+      expect(res.status).toBe(401);
+    });
+  });
+
+  describe("POST /api/auth/license-accept", () => {
+    async function createUser(overrides = {}) {
+      return User.create({
+        name: "License User",
+        phone: "09222222222",
+        passwordHash: "hashed",
+        invitationCode: "LIC00001",
+        ...overrides,
+      });
+    }
+
+    it("stamps the acceptance time, IP and user agent", async () => {
+      const user = await createUser();
+      const token = makeToken(user);
+
+      const res = await request(app)
+        .post("/api/auth/license-accept")
+        .set("Authorization", `Bearer ${token}`)
+        .set("User-Agent", "jest-agent");
+
+      expect(res.status).toBe(200);
+      expect(res.body.licenseAcceptedAt).toBeTruthy();
+
+      const saved = await User.findById(user._id);
+      expect(saved.licenseAcceptedAt).toBeInstanceOf(Date);
+      expect(saved.licenseUserAgent).toBe("jest-agent");
+      expect(saved.licenseIpAddress).toBeTruthy();
+    });
+
+    it("keeps the first acceptance record when called again", async () => {
+      const first = new Date("2026-01-01T00:00:00.000Z");
+      const user = await createUser({
+        licenseAcceptedAt: first,
+        licenseIpAddress: "1.1.1.1",
+        licenseUserAgent: "first-device",
+      });
+      const token = makeToken(user);
+
+      const res = await request(app)
+        .post("/api/auth/license-accept")
+        .set("Authorization", `Bearer ${token}`)
+        .set("User-Agent", "second-device");
+
+      expect(res.status).toBe(200);
+      expect(new Date(res.body.licenseAcceptedAt).toISOString()).toBe(
+        first.toISOString(),
+      );
+
+      const saved = await User.findById(user._id);
+      expect(saved.licenseUserAgent).toBe("first-device");
+      expect(saved.licenseIpAddress).toBe("1.1.1.1");
+    });
+
+    it("stamps users created before the field existed", async () => {
+      // Field မရှိသေးတဲ့ document အဟောင်းတွေမှာ licenseAcceptedAt က undefined —
+      // { licenseAcceptedAt: null } filter ကို မကိုက်ရင် အသုံးပြုသူ အဟောင်းတွေ
+      // agreement ကို ဘယ်တော့မှ မှတ်လို့မရဘူး။
+      const user = await createUser();
+      await User.updateOne({ _id: user._id }, { $unset: { licenseAcceptedAt: 1 } });
+      const token = makeToken(user);
+
+      const res = await request(app)
+        .post("/api/auth/license-accept")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.licenseAcceptedAt).toBeTruthy();
+    });
+
+    it("reports the flag through /api/auth/me", async () => {
+      const user = await createUser();
+      const token = makeToken(user);
+
+      const before = await request(app)
+        .get("/api/auth/me")
+        .set("Authorization", `Bearer ${token}`);
+      expect(before.body.user.licenseAcceptedAt).toBeNull();
+
+      await request(app)
+        .post("/api/auth/license-accept")
+        .set("Authorization", `Bearer ${token}`);
+
+      const after = await request(app)
+        .get("/api/auth/me")
+        .set("Authorization", `Bearer ${token}`);
+      expect(after.body.user.licenseAcceptedAt).toBeTruthy();
+    });
+
+    it("rejects without token", async () => {
+      const res = await request(app).post("/api/auth/license-accept");
       expect(res.status).toBe(401);
     });
   });

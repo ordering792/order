@@ -51,6 +51,11 @@ export const api = {
 
   me: () => request<{ user: ApiUser }>("/auth/me"),
 
+  acceptLicense: () =>
+    request<{ licenseAcceptedAt: string | null }>("/auth/license-accept", {
+      method: "POST",
+    }),
+
   updateLanguage: (language: string) =>
     request<{ user: { id: string; language: string } }>("/auth/language", {
       method: "PUT",
