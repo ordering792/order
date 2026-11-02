@@ -144,7 +144,7 @@ export const api = {
       shortBy: string;
     }>("/tasks/match", { method: "POST", body: JSON.stringify({}) }),
 
-  submitOrder: (id: string, input: { rating?: number; feedback?: string }) =>
+  submitOrder: (id: string, input: { rating: number }) =>
     request<{ task: ApiTask }>(`/tasks/${id}/submit`, {
       method: "POST",
       body: JSON.stringify(input),

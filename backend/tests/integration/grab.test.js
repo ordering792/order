@@ -233,7 +233,7 @@ describe("Grab / matching flow", () => {
     expect(second.body.order.id).toBe(first.body.order.id);
   });
 
-  it("submit stores rating + feedback and keeps the order assigned", async () => {
+  it("submit stores the rating and ignores the dropped feedback field", async () => {
     const user = await createUser();
     await seedPlan(user, { totalOrders: 5 });
 
@@ -252,7 +252,27 @@ describe("Grab / matching flow", () => {
     expect(task.status).toBe("assigned");
     expect(task.submittedAt).not.toBeNull();
     expect(task.rating).toBe(5);
-    expect(task.feedback).toBe("Great product");
+    expect(task.feedback).toBeNull();
+  });
+
+  it("submit rejects an order that has no rating", async () => {
+    const user = await createUser();
+    await seedPlan(user, { totalOrders: 5 });
+
+    const matched = await request(app)
+      .post("/api/tasks/match")
+      .set("Authorization", `Bearer ${makeToken(user)}`);
+
+    const res = await request(app)
+      .post(`/api/tasks/${matched.body.order.id}/submit`)
+      .set("Authorization", `Bearer ${makeToken(user)}`)
+      .send({});
+
+    expect(res.status).toBe(400);
+
+    const task = await Task.findById(matched.body.order.id);
+    expect(task.rating).toBeNull();
+    expect(task.submittedAt).toBeNull();
   });
 
   it("completing a submitted order credits the commission and updates counters", async () => {
@@ -418,7 +438,7 @@ describe("Grab / matching flow", () => {
       await request(app)
         .post(`/api/tasks/${task._id}/submit`)
         .set("Authorization", `Bearer ${makeToken(user)}`)
-        .send({});
+        .send({ rating: 4 });
       const done = await request(app)
         .post(`/api/tasks/complete/${task._id}`)
         .set("Authorization", `Bearer ${makeToken(user)}`)

@@ -62,7 +62,6 @@ export default function GrabPage() {
   const [needsDeposit, setNeedsDeposit] = useState(false);
   const [shortBy, setShortBy] = useState("0.00");
   const [rating, setRating] = useState(0);
-  const [feedback, setFeedback] = useState("");
   const [error, setError] = useState("");
 
   const loadSummary = useCallback(() => {
@@ -114,7 +113,6 @@ export default function GrabPage() {
     setIsLoading(true);
     setActiveProduct(null);
     setRating(0);
-    setFeedback("");
 
     try {
       const res = await api.matchOrder();
@@ -143,10 +141,7 @@ export default function GrabPage() {
     setIsSubmitting(true);
 
     try {
-      await api.submitOrder(activeProduct.id, {
-        rating: rating || undefined,
-        feedback: feedback.trim() || undefined,
-      });
+      await api.submitOrder(activeProduct.id, { rating });
       closeModal();
       router.push("/orders");
     } catch (err) {
@@ -411,17 +406,9 @@ export default function GrabPage() {
                     </button>
                   ))}
                 </div>
-              </div>
-
-              <div className="space-y-1">
-                <span className="text-[11px] font-semibold text-gray-500">{t("grab.feedback")}</span>
-                <textarea
-                  value={feedback}
-                  onChange={(e) => setFeedback(e.target.value)}
-                  placeholder={t("grab.writeReview")}
-                  rows={2}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs text-gray-700 outline-none focus:border-[#ff6600] resize-none"
-                ></textarea>
+                {rating === 0 && (
+                  <span className="text-[10px] text-gray-400">{t("grab.ratingRequired")}</span>
+                )}
               </div>
 
               <div className="flex space-x-2 pt-1">
@@ -441,7 +428,7 @@ export default function GrabPage() {
                 ) : (
                   <button
                     onClick={handleSubmitOrder}
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || rating === 0}
                     className="w-1/2 bg-gradient-to-r from-[#ff782d] to-[#ff5100] text-white py-3 rounded-xl font-bold text-xs shadow-md hover:opacity-95 transition disabled:opacity-60"
                   >
                     {isSubmitting ? t("grab.submitting") : t("grab.submitOrder")}

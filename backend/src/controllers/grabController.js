@@ -12,12 +12,9 @@ const { getMyPlan } = require("../services/orderPlanService");
 const { emitToUser } = require("../socket");
 const { WALLET_NOTES } = require("../constants/walletNotes");
 
-const ratingSchema = z
-  .object({
-    rating: z.number().int().min(1).max(5).nullish(),
-    feedback: z.string().max(1000).nullish(),
-  })
-  .default({});
+const ratingSchema = z.object({
+  rating: z.number().int().min(1).max(5),
+});
 
 // Order Detail modal အတွက် လိုအပ်တဲ့ data (reference UI နဲ့တူညီအောင်)
 function serializeGrabTask(task, luckyPosition) {
@@ -206,7 +203,8 @@ exports.match = asyncHandler(async (req, res) => {
   });
 });
 
-// "Submit Order" (grab modal) — rating/feedback သိမ်းပြီး /orders ကို ပို့
+// "Submit Order" (grab modal) — rating သိမ်းပြီး /orders ကို ပို့။ feedback
+// (Task.feedback) ကို input ကနေ လက်ခံတော့ဘူး၊ field ကိုတော့ ထားထားတယ်။
 exports.submit = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
@@ -233,14 +231,7 @@ exports.submit = asyncHandler(async (req, res) => {
     throw httpError(409, "Order not found, not matched yet, or already completed");
   }
 
-  const updates = { submittedAt: new Date() };
-
-  if (parsed.data.rating !== undefined && parsed.data.rating !== null) {
-    updates.rating = parsed.data.rating;
-  }
-  if (parsed.data.feedback) {
-    updates.feedback = parsed.data.feedback;
-  }
+  const updates = { submittedAt: new Date(), rating: parsed.data.rating };
 
   const updated = await Task.findByIdAndUpdate(task._id, updates, {
     returnDocument: "after",
