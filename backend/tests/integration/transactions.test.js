@@ -800,18 +800,59 @@ describe("Transaction endpoints", () => {
   });
 
   describe("Wallet address (user TRC20)", () => {
+    const TRON_ADDRESS = "TQSVhFzR7pN3yKdLmXcBv8tGnWqJs4Yp2r";
+
     it("user updates their own wallet address", async () => {
       const user = await createUser();
 
       const res = await request(app)
         .put("/api/auth/wallet-address")
         .set("Authorization", `Bearer ${makeToken(user)}`)
-        .send({ walletAddress: "TMyOwnWalletAddress123" });
+        .send({ walletAddress: `  ${TRON_ADDRESS} ` });
 
       expect(res.status).toBe(200);
+      expect(res.body.walletAddress).toBe(TRON_ADDRESS);
 
       const fresh = await User.findById(user._id);
-      expect(fresh.walletAddress).toBe("TMyOwnWalletAddress123");
+      expect(fresh.walletAddress).toBe(TRON_ADDRESS);
+    });
+
+    it("rejects an address that is not a TRON (TRC20) address", async () => {
+      const user = await createUser();
+
+      const res = await request(app)
+        .put("/api/auth/wallet-address")
+        .set("Authorization", `Bearer ${makeToken(user)}`)
+        .send({ walletAddress: "0xABCDEF0123456789abcdef0123456789abcdef" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/TRC20/);
+
+      const untouched = await User.findById(user._id);
+      expect(untouched.walletAddress).toBeNull();
+    });
+
+    it("blocks the change while a withdrawal request is pending", async () => {
+      const user = await createUser("user", {
+        walletAddress: "TOldAddressPlaceholderXXXX",
+      });
+
+      await Transaction.create({
+        userId: user._id,
+        type: "withdraw",
+        amount: "20.00",
+        status: "pending",
+      });
+
+      const res = await request(app)
+        .put("/api/auth/wallet-address")
+        .set("Authorization", `Bearer ${makeToken(user)}`)
+        .send({ walletAddress: TRON_ADDRESS });
+
+      expect(res.status).toBe(409);
+
+      const untouched = await User.findById(user._id);
+      expect(untouched.walletAddress).toBe("TOldAddressPlaceholderXXXX");
     });
 
     it("rejects an invalid wallet address payload", async () => {
@@ -828,7 +869,7 @@ describe("Transaction endpoints", () => {
     it("requires authentication", async () => {
       const res = await request(app)
         .put("/api/auth/wallet-address")
-        .send({ walletAddress: "TMyOwnWalletAddress123" });
+        .send({ walletAddress: TRON_ADDRESS });
 
       expect(res.status).toBe(401);
     });

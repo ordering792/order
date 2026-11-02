@@ -14,6 +14,9 @@ import { useToast } from "../../lib/useToast";
 import RequireAuth from "../components/RequireAuth";
 import Toast from "../components/Toast";
 
+// Backend က ဒီ format အတိုင်းစစ်တယ် (T + base58 ၃၃ လုံး) — '0 O I l' မပါ။
+const TRON_ADDRESS = /^T[1-9A-HJ-NP-Za-km-z]{33}$/;
+
 export default function BindWalletPage() {
   const { refreshUser } = useAuth();
   const t = useT();
@@ -26,12 +29,8 @@ export default function BindWalletPage() {
     e.preventDefault();
 
     const address = walletAddress.trim();
-    if (!address) {
+    if (!TRON_ADDRESS.test(address)) {
       showToast(t("walletBind.invalidAddress"));
-      return;
-    }
-    if (address.length < 10 || address.length > 100) {
-      showToast(t("walletBind.addressLength"));
       return;
     }
 
@@ -50,8 +49,10 @@ export default function BindWalletPage() {
       const message =
         err instanceof ApiError
           ? err.status === 400
-            ? t("walletBind.addressLength")
-            : err.message
+            ? t("walletBind.invalidAddress")
+            : err.status === 409
+              ? t("walletBind.pendingWithdrawal")
+              : err.message
           : t("walletBind.saveFailed");
       showToast(message);
     } finally {

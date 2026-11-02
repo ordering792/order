@@ -1,6 +1,12 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 
+// Admin reset ပြီးသား token ကို ငြင်းပယ်မယ်။ Deploy မတိုင်မီ issued token တွေ
+// မှာ tv မပါလို့ 0 အဖြစ် သတ်မှတ်တယ် — ဒါမှ release တစ်ခါနဲ့ အားလုံး logout မဖြစ်ဘူး။
+function isTokenStale(payload, user) {
+  return (payload.tv ?? 0) !== (user.tokenVersion ?? 0);
+}
+
 async function auth(req, res, next) {
   try {
     const header = req.headers.authorization;
@@ -15,12 +21,18 @@ async function auth(req, res, next) {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
 
     const user = await User.findById(payload.userId).select(
-      "_id role status phone name invitationCode",
+      "_id role status phone name invitationCode tokenVersion",
     );
 
     if (!user || user.status === "burned") {
       return res.status(401).json({
         message: "Account unavailable",
+      });
+    }
+
+    if (isTokenStale(payload, user)) {
+      return res.status(401).json({
+        message: "Session expired. Please sign in again.",
       });
     }
 
@@ -63,4 +75,4 @@ function adminOrOwner(req, res, next) {
   next();
 }
 
-module.exports = { auth, adminOnly, ownerOnly, adminOrOwner };
+module.exports = { auth, adminOnly, ownerOnly, adminOrOwner, isTokenStale };

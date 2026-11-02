@@ -103,6 +103,24 @@ export interface ApiAdminUser {
   ownerId?: string | null;
   language?: string;
   createdAt?: string;
+  ipAddress?: string | null;
+  lastLoginAt?: string | null;
+  lastDevice?: string | null;
+  // Admin သီးသန့် မှတ်စု — owner ဆီ API က ဘယ်တော့မှ မပို့ဘူး။
+  adminNote?: string | null;
+}
+
+// Order plan card board — user တစ်ယောက် + active plan (draft/generated)။
+// Completed round တွေ plan: null အဖြစ် ပြမယ် (row က Mongo မှာ ဆက်ရှိတယ်)။
+export interface ApiBoardRow {
+  user: {
+    _id: string;
+    name: string;
+    phone: string;
+    invitationCode: string;
+    balance?: MoneyValue;
+  };
+  plan: ApiPlan | null;
 }
 
 export interface ApiAdminStats {

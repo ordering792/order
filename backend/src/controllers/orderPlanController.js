@@ -1,7 +1,10 @@
 const { z } = require("zod");
 const asyncHandler = require("../utils/asyncHandler");
 const orderPlanService = require("../services/orderPlanService");
-const { generateOrders } = require("../services/orderGenerationService");
+const {
+  generateOrders,
+  addLuckyPosition,
+} = require("../services/orderGenerationService");
 
 const createPlanSchema = z.object({
   userId: z.string().length(24),
@@ -25,6 +28,18 @@ const generateSchema = z.object({
   depositTransactionId: z.string().length(24).optional(),
 });
 
+const updatePlanSchema = z.object({
+  totalOrders: z.number().int().min(1).max(500),
+  luckyPositions: createPlanSchema.shape.luckyPositions,
+});
+
+const luckyPositionSchema = z.object({
+  orderNumber: z.number().int().min(1),
+  productId: z.string().length(24).nullish(),
+  requiredDeposit: z.string().default("0.00"),
+  luckyCommission: z.string(),
+});
+
 // Error handling ကို asyncHandler + app.js global handler က ထားတယ်။
 // ဒီမှာ catch လုပ်ပြီး err.message ကို 500 နဲ့ ပို့ရင် internal (Mongo)
 // message တွေ client ဆီ ထွက်သွားမယ်။
@@ -43,6 +58,28 @@ exports.createPlan = asyncHandler(async (req, res) => {
 
   res.status(201).json({
     message: "Order plan created",
+    plan: orderPlanService.serializePlan(plan),
+  });
+});
+
+exports.updatePlan = asyncHandler(async (req, res) => {
+  const parsed = updatePlanSchema.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res.status(400).json({
+      message: "Validation failed",
+      errors: parsed.error.issues,
+    });
+  }
+
+  const plan = await orderPlanService.updatePlan(
+    req.params.id,
+    parsed.data,
+    req.user,
+  );
+
+  res.json({
+    message: "Order plan updated",
     plan: orderPlanService.serializePlan(plan),
   });
 });
@@ -112,6 +149,27 @@ exports.generate = asyncHandler(async (req, res) => {
 
   res.status(201).json({
     message: `${plan.totalOrders} orders generated`,
+    plan: orderPlanService.serializePlan(plan),
+  });
+});
+
+exports.addLuckyPosition = asyncHandler(async (req, res) => {
+  const parsed = luckyPositionSchema.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res.status(400).json({
+      message: "Validation failed",
+      errors: parsed.error.issues,
+    });
+  }
+
+  const plan = await addLuckyPosition(
+    { planId: req.params.id, ...parsed.data },
+    req.user,
+  );
+
+  res.status(201).json({
+    message: `Lucky position added on order ${parsed.data.orderNumber}`,
     plan: orderPlanService.serializePlan(plan),
   });
 });

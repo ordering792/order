@@ -142,6 +142,12 @@ exports.login = asyncHandler(async (req, res) => {
     });
   }
 
+  // Admin user list မှာ IP/device ပြနိုင်အောင် login အောင်မြင်တိုင်း မှတ်ထားမယ်။
+  user.ipAddress = req.ip || null;
+  user.lastLoginAt = new Date();
+  user.lastUserAgent = (req.headers["user-agent"] || "").slice(0, 300) || null;
+  await user.save();
+
   res.json({ token: signToken(user), user: publicUser(user) });
 });
 

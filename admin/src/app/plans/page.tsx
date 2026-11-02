@@ -1,179 +1,131 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus } from "lucide-react";
-import {
-  api,
-  ApiAdminUser,
-  ApiDepositSummary,
-  ApiPlan,
-  ApiProduct,
-  ApiTask,
-} from "@/lib/api";
-import { money } from "@/lib/money";
+import { useCallback, useEffect, useState } from "react";
+import { Search } from "lucide-react";
+import { api, ApiBoardRow, ApiPlan, ApiTask } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import { getSocket } from "@/lib/socket";
-import LuckyPositionsForm, {
-  type LuckyRow,
-} from "../components/LuckyPositionsForm";
+import OrderUserCard, { type LuckyTagInput } from "../components/OrderUserCard";
 import TaskPanel from "../components/TaskPanel";
 
-type DepositMap = Record<string, ApiDepositSummary>;
+const PAGE_SIZE = 24;
 
-function mergeDeposits(prev: DepositMap, list: ApiDepositSummary[]): DepositMap {
-  if (list.length === 0) return prev;
+const REFRESH_EVENTS = [
+  "transaction:updated",
+  "order:plan_created",
+  "order:plan_updated",
+  "order:plan_generated",
+  "order:plan_completed",
+  "order:lucky_added",
+  "task:completed",
+];
 
-  const next = { ...prev };
-  for (const item of list) next[item.userId] = item;
-  return next;
+function messageOf(err: unknown) {
+  return err instanceof Error ? err.message : "Request failed";
+}
+
+function toPosition(tag: LuckyTagInput) {
+  return {
+    orderNumber: Number(tag.orderNumber),
+    productId: null,
+    requiredDeposit: tag.requiredDeposit || "0.00",
+    luckyCommission: tag.luckyCommission || "0.00",
+  };
 }
 
 export default function AdminPlansPage() {
   const t = useT();
-  const [plans, setPlans] = useState<
-    (ApiPlan & { user?: { _id: string; name: string; phone: string } })[]
-  >([]);
-  const [users, setUsers] = useState<ApiAdminUser[]>([]);
-  const [deposits, setDeposits] = useState<DepositMap>({});
-  const [products, setProducts] = useState<ApiProduct[]>([]);
-  const [plansMeta, setPlansMeta] = useState({ page: 1, pages: 1, total: 0 });
+  const [rows, setRows] = useState<ApiBoardRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [pages, setPages] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
-  const [selectorLoading, setSelectorLoading] = useState(false);
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [userId, setUserId] = useState("");
-  const [totalOrders, setTotalOrders] = useState(40);
-  const [luckyRows, setLuckyRows] = useState<LuckyRow[]>([]);
-  const [taskPlan, setTaskPlan] = useState<
-    (ApiPlan & { user?: { _id: string; name: string; phone: string } }) | null
-  >(null);
+  const [busyUserId, setBusyUserId] = useState<string | null>(null);
+  const [drawerRow, setDrawerRow] = useState<ApiBoardRow | null>(null);
   const [tasks, setTasks] = useState<ApiTask[]>([]);
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
 
-  // Plan list နဲ့ deposit အချက်အလက်တွေကို တစ်ပြိုင်နက် ဖတ်မယ်။ silent = true
-  // ဆိုရင် table ကို မဖျောက်ဘဲ background မှာ ပြန်စစ်မယ်။
-  const loadPlans = useCallback(async (page: number, silent = false) => {
-    if (!silent) {
-      setLoading(true);
-      setError("");
-    }
-
-    try {
-      const planRes = await api.adminListPlans({ page, limit: 25 });
-      setPlans(planRes.plans);
-      setPlansMeta({
-        page: planRes.page,
-        pages: planRes.pages,
-        total: planRes.total,
-      });
-
-      const planUserIds = [
-        ...new Set(planRes.plans.map((plan) => plan.userId)),
-      ];
-
-      if (planUserIds.length > 0) {
-        const depositRes = await api.adminDepositSummary(planUserIds);
-        setDeposits((prev) => mergeDeposits(prev, depositRes.deposits));
+  // Card board ကို အပြည့်အဝ ပြန်ဖတ်မယ်။ silent = true ဆိုရင် loading
+  // မပြဘဲ background မှာပဲ data ကို အစားထိုးမယ်။
+  const loadBoard = useCallback(
+    async (page: number, silent = false) => {
+      if (!silent) {
+        setLoading(true);
+        setError("");
       }
-    } catch (err) {
-      if (!silent) setError(err instanceof Error ? err.message : "Failed");
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, []);
 
-  const loadUserDeposit = useCallback(async (targetUserId: string) => {
-    if (!targetUserId) return;
+      try {
+        const res = await api.adminOrderBoard({
+          search: search.trim() || undefined,
+          page,
+          limit: PAGE_SIZE,
+        });
 
-    try {
-      const res = await api.adminDepositSummary([targetUserId]);
-      setDeposits((prev) => mergeDeposits(prev, res.deposits));
-    } catch {
-      // deposit မရသေးတဲ့ user အတွက် error ပြဖို့ မလိုဘူး — badge က "No accepted deposit" ပဲ ပြမယ်။
-    }
-  }, []);
-
-  const loadSelectorData = useCallback(async () => {
-    setSelectorLoading(true);
-
-    try {
-      const requests: Promise<unknown>[] = [
-        users.length
-          ? Promise.resolve(null)
-          : api.adminListUsers({ limit: 200 }),
-        products.length
-          ? Promise.resolve(null)
-          : api.get<{ products: ApiProduct[] }>("/products"),
-      ];
-
-      const [userRes, productRes] = await Promise.all(requests);
-
-      if (userRes) setUsers((userRes as { users: ApiAdminUser[] }).users);
-      if (productRes) setProducts((productRes as { products: ApiProduct[] }).products);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load selector data");
-    } finally {
-      setSelectorLoading(false);
-    }
-  }, [products.length, users.length]);
-
-  // Page ထဲဝင်တိုင်း status/badge အသစ်ကို ချက်ချင်း ပြပြီး မှားနေတဲ့
-  // data ကို အလိုအလျောက် ပြန်စစ်မယ်။
-  const refresh = useCallback(
-    async (silent = true) => {
-      await loadPlans(currentPage, silent);
-
-      if (userId) await loadUserDeposit(userId);
+        setRows(res.rows);
+        setTotal(res.total);
+        setPages(res.pages);
+      } catch (err) {
+        if (!silent) setError(messageOf(err));
+      } finally {
+        if (!silent) setLoading(false);
+      }
     },
-    [currentPage, loadPlans, loadUserDeposit, userId],
+    [search],
   );
 
+  // ရိုက်နေစဉ် request burst မဖြစ်အောင် search ကို 350ms debounce လုပ်မယ်။
   useEffect(() => {
-    void loadPlans(currentPage);
-  }, [currentPage, loadPlans]);
+    const delay = search ? 350 : 0;
+    const timer = window.setTimeout(() => void loadBoard(currentPage), delay);
 
-  // Socket event တွေက ရောက်တာနဲ့ ချက်ချင်း ပြန်ဖတ်မယ်။ Event အများကြီး
-  // ဆက်တိုက် ရောက်ရင် request burst မဖြစ်အောင် debounce လုပ်မယ်။
+    return () => window.clearTimeout(timer);
+  }, [currentPage, loadBoard, search]);
+
+  const refresh = useCallback(
+    () => loadBoard(currentPage, true),
+    [currentPage, loadBoard],
+  );
+
+  const loadTasks = useCallback(async (row: ApiBoardRow) => {
+    if (!row.plan) return;
+
+    try {
+      const res = await api.adminListUserTasks(row.user._id, row.plan._id);
+      setTasks(res.tasks);
+    } catch {
+      // Task list ဖတ်မရရင် drawer ဟာ ပိတ်နေတယ်လို့ မထင်အောင် ကွက်လပ်ပဲ ထားမယ်။
+      setTasks([]);
+    }
+  }, []);
+
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
 
-    let refreshTimer: number | null = null;
+    let timer: number | null = null;
     const handler = () => {
-      if (refreshTimer !== null) return;
-      refreshTimer = window.setTimeout(() => {
-        refreshTimer = null;
+      if (timer !== null) return;
+      timer = window.setTimeout(() => {
+        timer = null;
         void refresh();
+        if (drawerRow) void loadTasks(drawerRow);
       }, 500);
     };
 
-    const events = [
-      "transaction:updated",
-      "order:plan_created",
-      "order:plan_generated",
-      "order:plan_completed",
-      "task:completed",
-    ];
-
-    for (const event of events) socket.on(event, handler);
-
-    // Socket နောက်မှန် ပြန်မယ်ဆို အချိန်ကောက်တွင်း ဖြစ်ပြီးသား event တွေ လွတ်သွားနိုင်လို့
-    // ချိတ်ပြီးတာနဲ့ ချက်ချင်း ပြန်ဖတ်မယ်။
+    for (const event of REFRESH_EVENTS) socket.on(event, handler);
     socket.on("connect", handler);
 
     return () => {
-      if (refreshTimer !== null) {
-        window.clearTimeout(refreshTimer);
-      }
-      for (const event of events) socket.off(event, handler);
+      if (timer !== null) window.clearTimeout(timer);
+      for (const event of REFRESH_EVENTS) socket.off(event, handler);
       socket.off("connect", handler);
     };
-  }, [refresh]);
+  }, [drawerRow, loadTasks, refresh]);
 
-  // Tab ပြန်လာတဲ့အခါနဲ့ socket မရသွားတဲ့အခါ (ကြောင့် အချိန်ကုန်မှာ) ကို
-  // ဖုံးအုပ်တဲ့အတွက် ခပ်ကြားခပ်ကြား refresh လုပ်မယ်။
+  // Socket လွဲသွားတဲ့ အချိန်ကွက်ကို ဖုံးအုပ်ဖို့ focus/visibility နဲ့ 15s tick။
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
@@ -183,165 +135,87 @@ export default function AdminPlansPage() {
     window.addEventListener("focus", onVisible);
     document.addEventListener("visibilitychange", onVisible);
 
+    const interval = window.setInterval(onVisible, 15000);
+
     return () => {
       window.removeEventListener("focus", onVisible);
       document.removeEventListener("visibilitychange", onVisible);
+      window.clearInterval(interval);
     };
   }, [refresh]);
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      if (document.visibilityState !== "visible") return;
-      void refresh();
-    }, 15000);
+  const run = useCallback(
+    async (userId: string, action: () => Promise<unknown>, success: string) => {
+      setError("");
+      setNotice("");
+      setBusyUserId(userId);
 
-    return () => clearInterval(timer);
-  }, [refresh]);
-
-  const depositsFor = useCallback(
-    (planUserId: string) => {
-      const entry = deposits[planUserId];
-
-      return {
-        accepted: entry?.accepted ?? null,
-        freeAccepted: entry?.freeAccepted ?? null,
-        pending: entry?.pending ?? [],
-        balance: entry?.balance ?? "0.00",
-      };
+      try {
+        await action();
+        setNotice(success);
+        await loadBoard(currentPage, true);
+        return true;
+      } catch (err) {
+        setError(messageOf(err));
+        return false;
+      } finally {
+        setBusyUserId(null);
+      }
     },
-    [deposits],
+    [currentPage, loadBoard],
   );
 
-  const selectedDepositCents = useMemo(() => {
-    if (!userId) return null;
-
-    const deposit = depositsFor(userId).freeAccepted;
-    if (!deposit) return null;
-
-    return Math.round(Number(money(deposit.amount)) * 100);
-  }, [userId, depositsFor]);
-
-  // Balance round — free deposit မရှိပေမယ့် အရင် deposit လုပ်ဖူးပြီး balance ရှိရင်
-  // အသစ် round က user balance အပြည်အပြည်ကို base ထားမယ်။
-  const selectedBalanceCents = useMemo(() => {
-    if (!userId) return null;
-
-    const { accepted, freeAccepted, balance } = depositsFor(userId);
-    const cents = Math.round(Number(money(balance)) * 100);
-
-    if (freeAccepted || !accepted || cents < 1) return null;
-
-    return cents;
-  }, [userId, depositsFor]);
-
-  const balanceRound = useMemo(() => {
-    if (!selectedBalanceCents) return null;
-
-    return {
-      cents: selectedBalanceCents,
-      lo: Math.floor((selectedBalanceCents * 80) / 100),
-      hi: selectedBalanceCents,
-    };
-  }, [selectedBalanceCents]);
-
-  // Catalog coverage — deposit အလိုက် band ထဲက product ဘယ်လောက် ရှိလဲ
-  const catalogCoverage = useMemo(() => {
-    if (!selectedDepositCents) return null;
-
-    const lo = Math.floor((selectedDepositCents * 80) / 100);
-    const hi = selectedDepositCents;
-    const inRange = products.filter((product) => {
-      const price = Math.round(Number(money(product.price)) * 100);
-      return price >= lo && price <= hi;
-    }).length;
-
-    return { lo, hi, inRange, total: products.length };
-  }, [selectedDepositCents, products]);
-
-  const createPlan = async () => {
-    setError("");
-    setNotice("");
-
-    const luckyPositions = luckyRows
-      .filter((row) => row.orderNumber)
-      .map((row) => ({
-        orderNumber: Number(row.orderNumber),
-        requiredDeposit: row.requiredDeposit || "0.00",
-        luckyCommission: row.luckyCommission || "0.00",
-      }));
-
-    try {
-      await api.adminCreatePlan({
-        userId,
-        totalOrders: Number(totalOrders),
-        luckyPositions,
-      });
-      setIsCreateOpen(false);
-      setUserId("");
-      setLuckyRows([]);
-      void loadPlans(currentPage);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Create failed");
-    }
-  };
-
-  const generate = async (plan: ApiPlan) => {
-    setError("");
-    setNotice("");
-
-    const { accepted, freeAccepted, pending, balance } = depositsFor(
-      plan.userId,
+  const createPlan = (userId: string, totalOrders: number) =>
+    run(
+      userId,
+      () => api.adminCreatePlan({ userId, totalOrders, luckyPositions: [] }),
+      t("admin.plans.roundOpened", { count: totalOrders }),
     );
-    const balanceCents = Math.round(Number(money(balance)) * 100);
 
-    let depositId: string | undefined;
+  const updateDraft = (
+    plan: ApiPlan,
+    totalOrders: number,
+    tags: LuckyTagInput[],
+  ) =>
+    run(
+      plan.userId,
+      () =>
+        api.adminUpdatePlan(plan._id, {
+          totalOrders,
+          luckyPositions: tags
+            .filter((tag) => tag.orderNumber !== "")
+            .map(toPosition),
+        }),
+      t("admin.saved"),
+    );
 
-    if (freeAccepted) {
-      depositId = freeAccepted._id;
-    } else if (!accepted) {
-      setError(
-        pending.length > 0
-          ? t("admin.plans.acceptFirst")
-          : t("admin.plans.depositMissing"),
-      );
-      return;
-    } else if (balanceCents < 1) {
-      setError(t("admin.plans.balanceEmpty"));
-      return;
-    }
+  const addLucky = (plan: ApiPlan, tag: LuckyTagInput) =>
+    run(
+      plan.userId,
+      () => api.adminAddLuckyPosition(plan._id, toPosition(tag)),
+      t("admin.plans.luckyAdded", { number: tag.orderNumber }),
+    );
 
-    try {
-      await api.adminGeneratePlan(plan._id, depositId);
-      setNotice(`Order #${plan.totalOrders} generated`);
-      void loadPlans(currentPage);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Generate failed");
-    }
-  };
+  const generate = (plan: ApiPlan) =>
+    run(
+      plan.userId,
+      () => api.adminGeneratePlan(plan._id),
+      t("admin.plans.ordersGenerated", { count: plan.totalOrders }),
+    );
 
   const remove = async (plan: ApiPlan) => {
     if (!window.confirm(t("admin.deleteConfirm"))) return;
 
-    setError("");
-    try {
-      await api.adminDeletePlan(plan._id);
-      void loadPlans(currentPage);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
-    }
+    await run(
+      plan.userId,
+      () => api.adminDeletePlan(plan._id),
+      t("admin.plans.roundDeleted"),
+    );
   };
 
-  const openTasks = async (plan: ApiPlan) => {
-    setError("");
-    setTaskPlan(plan);
-    setTasks([]);
-
-    try {
-      const res = await api.adminListUserTasks(plan.userId, plan._id);
-      setTasks(res.tasks);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed");
-    }
+  const openTasks = async (row: ApiBoardRow) => {
+    setDrawerRow(row);
+    await loadTasks(row);
   };
 
   const completeTask = async (task: ApiTask) => {
@@ -350,155 +224,40 @@ export default function AdminPlansPage() {
 
     try {
       await api.completeTask(task._id);
-
-      // Progress ကို ချက်ချင်း update လုပ်ပြီးး ပြန်ဖတ်မယ်။
-      setTaskPlan((prev) =>
-        prev ? { ...prev, completedCount: prev.completedCount + 1 } : prev,
-      );
-      setPlans((rows) =>
-        rows.map((row) =>
-          row._id === taskPlan?._id
-            ? { ...row, completedCount: row.completedCount + 1 }
-            : row,
-        ),
-      );
-
-      const res = await api.adminListUserTasks(taskPlan?.userId ?? "", taskPlan?._id);
-      setTasks(res.tasks);
-      void loadPlans(currentPage);
+      if (drawerRow) await loadTasks(drawerRow);
+      await loadBoard(currentPage, true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed");
+      setError(messageOf(err));
     } finally {
       setBusyTaskId(null);
     }
   };
 
-  const statusLabel = (value: string) =>
-    value === "generated"
-      ? t("admin.stats.generated")
-      : value === "completed"
-        ? t("admin.stats.completed")
-        : t("admin.status.draft");
-
-  const livePlan = taskPlan
-    ? (plans.find((p) => p._id === taskPlan._id) ?? taskPlan)
+  // Drawer ထဲက count တွေက board ရဲ့ latest data နဲ့ အမြဲ တစ်ထွေတည်းနေမယ်။
+  const liveDrawer = drawerRow
+    ? (rows.find((row) => row.user._id === drawerRow.user._id) ?? drawerRow)
     : null;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => {
-            const next = !isCreateOpen;
-            setIsCreateOpen(next);
-            if (next) {
-              void loadSelectorData();
-              if (userId) void loadUserDeposit(userId);
-            }
-          }}
-          className="flex items-center gap-1.5 rounded-lg bg-[#ff6600] px-3 py-2 text-xs font-bold text-white transition hover:bg-orange-600"
-        >
-          <Plus size={16} />
-          {t("admin.create")}
-        </button>
-        {selectorLoading && (
-          <span className="text-xs font-semibold text-slate-500">
-            Loading form data...
-          </span>
-        )}
-      </div>
-
-      {isCreateOpen && (
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <label className="text-xs font-semibold text-slate-500">
-              {t("admin.field.name")}
-              <select
-                data-testid="plan-user-select"
-                value={userId}
-                onChange={(e) => {
-                  const nextUserId = e.target.value;
-                  setUserId(nextUserId);
-                  if (nextUserId) void loadUserDeposit(nextUserId);
-                }}
-                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal text-slate-700 outline-none focus:border-[#ff6600]"
-              >
-                <option value="">—</option>
-                {users.map((u) => (
-                  <option key={u._id} value={u._id}>
-                    {u.name} ({u.phone})
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="text-xs font-semibold text-slate-500">
-              {t("admin.plans.orderCount")}
-              <input
-                data-testid="plan-total-orders"
-                type="number"
-                min={1}
-                max={500}
-                value={totalOrders}
-                onChange={(e) => setTotalOrders(Number(e.target.value))}
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal text-slate-700 outline-none focus:border-[#ff6600]"
-              />
-              <span className="mt-1 block text-[11px] font-normal text-slate-400">
-                {t("admin.plans.orderCountHint")}
-              </span>
-            </label>
-          </div>
-
-          <LuckyPositionsForm
-            rows={luckyRows}
-            totalOrders={totalOrders}
-            onChange={setLuckyRows}
-            products={products}
-            // Free deposit ရှိရင် deposit ကို base ထားမယ်၊ မရှိရင် balance round အတွက်
-            // user balance ကို base ထားမယ် — backend ရဲ့ generate base နဲ့ တူရမယ်။
-            depositCents={selectedDepositCents ?? selectedBalanceCents}
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex min-w-[240px] flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+          <Search size={14} className="shrink-0 text-slate-400" />
+          <input
+            data-testid="board-search"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setCurrentPage(1);
+            }}
+            placeholder={t("admin.search")}
+            className="w-full bg-transparent text-sm text-slate-700 outline-none"
           />
-
-          {catalogCoverage && (
-            <p className="mt-3 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-[11px] text-slate-500">
-              {t("admin.lucky.coverage", {
-                lo: `${(catalogCoverage.lo / 100).toFixed(2)}`,
-                hi: `${(catalogCoverage.hi / 100).toFixed(2)}`,
-                count: catalogCoverage.inRange,
-                total: catalogCoverage.total,
-                orders: Number(totalOrders),
-              })}
-            </p>
-          )}
-
-          {balanceRound && (
-            <p className="mt-3 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-[11px] font-semibold text-emerald-700">
-              {t("admin.plans.balanceBase", {
-                amount: `$${(balanceRound.cents / 100).toFixed(2)}`,
-                lo: `$${(balanceRound.lo / 100).toFixed(2)}`,
-                hi: `$${(balanceRound.hi / 100).toFixed(2)}`,
-                orders: Number(totalOrders),
-              })}
-            </p>
-          )}
-
-          <div className="mt-4 flex gap-2">
-            <button
-              onClick={createPlan}
-              disabled={!userId}
-              className="rounded-lg bg-[#ff6600] px-4 py-2 text-xs font-bold text-white transition hover:bg-orange-600 disabled:opacity-50"
-            >
-              {t("admin.save")}
-            </button>
-            <button
-              onClick={() => setIsCreateOpen(false)}
-              className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-50"
-            >
-              {t("admin.cancel")}
-            </button>
-          </div>
-        </div>
-      )}
+        </label>
+        <span className="text-xs font-semibold text-slate-500">
+          {total} · {currentPage} / {pages}
+        </span>
+      </div>
 
       {error && (
         <p className="rounded-lg bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
@@ -511,165 +270,81 @@ export default function AdminPlansPage() {
         </p>
       )}
 
-      {livePlan && (
-        <TaskPanel
-          userName={livePlan.user?.name ?? ""}
-          completedCount={livePlan.completedCount}
-          totalOrders={livePlan.totalOrders}
-          tasks={tasks}
-          busyTaskId={busyTaskId}
-          onComplete={completeTask}
-          onClose={() => setTaskPlan(null)}
-        />
+      {loading ? (
+        <p className="py-10 text-center text-sm text-slate-400">
+          {t("admin.loading")}
+        </p>
+      ) : rows.length === 0 ? (
+        <p className="py-10 text-center text-sm text-slate-400">
+          {t("admin.empty")}
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 items-start gap-3 2xl:grid-cols-2">
+          {rows.map((row) => (
+            <OrderUserCard
+              key={`${row.user._id}:${row.plan?._id ?? "none"}:${row.plan?.totalOrders ?? 0}`}
+              row={row}
+              busy={busyUserId === row.user._id}
+              onCreate={createPlan}
+              onUpdateDraft={updateDraft}
+              onAddLucky={addLucky}
+              onGenerate={generate}
+              onDelete={remove}
+              onOpenTasks={openTasks}
+            />
+          ))}
+        </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full min-w-[860px] text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
-            <tr>
-              <th className="px-4 py-3">{t("admin.field.name")}</th>
-              <th className="px-4 py-3">{t("admin.stats.plans")}</th>
-              <th className="px-4 py-3">{t("admin.stats.completed")}</th>
-              <th className="px-4 py-3">{t("admin.field.status")}</th>
-              <th className="px-4 py-3">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {loading ? (
-              <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-slate-400">
-                  {t("admin.loading")}
-                </td>
-              </tr>
-            ) : plans.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-slate-400">
-                  {t("admin.empty")}
-                </td>
-              </tr>
-            ) : (
-              plans.map((plan) => {
-                const percent =
-                  plan.totalOrders > 0
-                    ? Math.min(
-                        100,
-                        Math.round((plan.completedCount / plan.totalOrders) * 100),
-                      )
-                    : 0;
-                const deposits = depositsFor(plan.userId);
-
-                return (
-                  <tr key={plan._id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3">
-                      <p className="font-semibold text-slate-800">
-                        {plan.user?.name ?? "—"}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        {plan.user?.phone ?? ""}
-                      </p>
-                      {deposits.freeAccepted ? (
-                        <span className="mt-1 inline-block rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-600">
-                          {t("admin.plans.depositReady")} $
-                          {money(deposits.freeAccepted.amount)}
-                        </span>
-                      ) : deposits.accepted &&
-                        Number(money(deposits.balance)) > 0 ? (
-                        <span className="mt-1 inline-block rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
-                          {t("admin.plans.balanceReady")} $
-                          {money(deposits.balance)}
-                        </span>
-                      ) : deposits.accepted ? (
-                        <span className="mt-1 inline-block rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
-                          {t("admin.plans.depositUsed")} $
-                          {money(deposits.accepted.amount)}
-                        </span>
-                      ) : deposits.pending.length > 0 ? (
-                        <span className="mt-1 inline-block rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-600">
-                          {t("admin.plans.pendingDeposit")} $
-                          {money(deposits.pending[0].amount)}
-                        </span>
-                      ) : (
-                        <span className="mt-1 inline-block rounded-md bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-600">
-                          {t("admin.plans.depositMissing")}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-slate-700">{plan.totalOrders}</td>
-                    <td className="px-4 py-3">
-                      <p className="text-slate-700">
-                        {plan.completedCount} / {plan.totalOrders}
-                      </p>
-                      <div className="mt-1 h-1.5 w-24 overflow-hidden rounded-full bg-slate-100">
-                        <div
-                          className="h-full rounded-full bg-[#ff6600]"
-                          style={{ width: `${percent}%` }}
-                        />
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
-                        {statusLabel(plan.status)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-1.5">
-                        <button
-                          onClick={() => openTasks(plan)}
-                          className="rounded-md border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50"
-                        >
-                          {t("admin.plans.tasks")}
-                        </button>
-                        {plan.status === "draft" && (
-                          <button
-                            onClick={() => generate(plan)}
-                            className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-600 transition hover:bg-emerald-100"
-                          >
-                            {t("admin.action.generate")}
-                          </button>
-                        )}
-                        <button
-                          onClick={() => remove(plan)}
-                          className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-600 transition hover:bg-red-100"
-                        >
-                          {t("admin.delete")}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="flex items-center justify-between text-xs text-slate-500">
-        <span>
-          {plansMeta.total} {t("admin.stats.plans")}
-        </span>
-
-        <div className="flex items-center gap-2">
-          <button
-            disabled={currentPage <= 1}
-            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold disabled:opacity-40"
-          >
-            {t("admin.back")}
-          </button>
+      {pages > 1 && (
+        <div className="flex items-center justify-between text-xs text-slate-500">
           <span>
-            {plansMeta.page} / {plansMeta.pages}
+            {currentPage} / {pages} ({total})
           </span>
-          <button
-            disabled={currentPage >= plansMeta.pages}
-            onClick={() =>
-              setCurrentPage((p) => Math.min(plansMeta.pages, p + 1))
-            }
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold disabled:opacity-40"
-          >
-            {t("admin.refresh")}
-          </button>
+          <div className="flex gap-2">
+            <button
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold disabled:opacity-40"
+            >
+              {t("admin.back")}
+            </button>
+            <button
+              data-testid="board-next"
+              disabled={currentPage >= pages}
+              onClick={() => setCurrentPage((page) => Math.min(pages, page + 1))}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold disabled:opacity-40"
+            >
+              {t("admin.next")}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
+
+      {liveDrawer?.plan && (
+        <div
+          data-testid="tasks-drawer"
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4"
+          onClick={() => setDrawerRow(null)}
+        >
+          <div
+            className="w-full max-w-3xl"
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
+          >
+            <TaskPanel
+              userName={liveDrawer.user.name}
+              completedCount={liveDrawer.plan.completedCount}
+              totalOrders={liveDrawer.plan.totalOrders}
+              tasks={tasks}
+              busyTaskId={busyTaskId}
+              onComplete={completeTask}
+              onClose={() => setDrawerRow(null)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

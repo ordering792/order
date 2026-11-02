@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Search } from "lucide-react";
 import { api } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import { getSocket } from "@/lib/socket";
@@ -10,8 +11,12 @@ interface AdminConversation {
   subject?: string;
   status?: string;
   lastMessagePreview?: string;
+  guestId?: string | null;
   userId?: { name: string; phone: string } | null;
   ownerId?: { name: string; phone: string } | null;
+  // Admin မဖတ်ရသေးတဲ့ customer စာ အရေအတွက် — backend က Message.readAt
+  // ကို ကြည့်ပြီး တွက်ပေးတာ (badge + bold အတွက်)။
+  unreadCountByAdmin?: number;
 }
 
 interface AdminMessage {
@@ -21,6 +26,27 @@ interface AdminMessage {
   createdAt?: string;
 }
 
+// All / Users / Guests tab — "all" က backend default မို့ query မပို့ဘူး။
+type ParticipantTab = "all" | "users" | "guests";
+
+const TAB_KEYS: ParticipantTab[] = ["all", "users", "guests"];
+
+const TAB_LABEL: Record<ParticipantTab, string> = {
+  all: "admin.support.tabAll",
+  users: "admin.support.tabUsers",
+  guests: "admin.support.tabGuests",
+};
+
+interface TabCounts {
+  all: number;
+  users: number;
+  guests: number;
+}
+
+// guestId က UUID ဖြစ်လို့ အုပ်စုပထမ (8) လုံးပဲ ပြတယ် — admin ဆီ trace လုပ်ဖို့
+// လုံလောက်တဲ့ handle။ အတိုကောက်မပြဘဲ ပြည့်ပြလိုက်ရင် row အကျယ်ပွားမယ်။
+const shortId = (id: string) => (id.length > 10 ? `${id.slice(0, 8)}…` : id);
+
 export default function AdminSupportPage() {
   const t = useT();
   const [conversations, setConversations] = useState<AdminConversation[]>([]);
@@ -29,32 +55,42 @@ export default function AdminSupportPage() {
   const [reply, setReply] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [participant, setParticipant] = useState<ParticipantTab>("all");
+  const [counts, setCounts] = useState<TabCounts | null>(null);
 
-  const load = useCallback((silent = false) => {
-    if (!silent) {
-      setLoading(true);
-      setError("");
-    }
+  const load = useCallback(
+    (silent = false) => {
+      if (!silent) {
+        setLoading(true);
+        setError("");
+      }
 
-    return api
-      .adminListConversations()
-      .then((res) => {
-        const list = (res.conversations ?? []) as AdminConversation[];
-        setConversations(list);
+      return api
+        .adminListConversations({
+          search: search.trim() || undefined,
+          participant: participant === "all" ? undefined : participant,
+        })
+        .then((res) => {
+          const list = (res.conversations ?? []) as AdminConversation[];
+          setConversations(list);
+          setCounts(res.counts ?? null);
 
-        setSelected((current) => {
-          if (!current) return current;
-          const fresh = list.find((c) => c._id === current._id);
-          return fresh ?? current;
+          setSelected((current) => {
+            if (!current) return current;
+            const fresh = list.find((c) => c._id === current._id);
+            return fresh ?? current;
+          });
+        })
+        .catch((err) => {
+          if (!silent) setError(err.message);
+        })
+        .finally(() => {
+          if (!silent) setLoading(false);
         });
-      })
-      .catch((err) => {
-        if (!silent) setError(err.message);
-      })
-      .finally(() => {
-        if (!silent) setLoading(false);
-      });
-  }, []);
+    },
+    [search, participant],
+  );
 
   const loadMessages = useCallback(async (conversationId: string) => {
     try {
@@ -65,16 +101,40 @@ export default function AdminSupportPage() {
     }
   }, []);
 
+  // Search ရိုက်နေတိုင်း request မပို့ဘူး — 350ms နားထောင်ပြီးမှ ပို့တယ်။
   useEffect(() => {
-    void load();
-  }, [load]);
+    const timer = setTimeout(() => void load(), search ? 350 : 0);
 
+    return () => clearTimeout(timer);
+  }, [load, search]);
+
+  // Conversation ဖွင့်လျှင် ဖတ်ပြီး လက်မှတ်ရေးမယ် — backend က customer စာ
+  // တိုင်းရဲ့ readAt ကို stamp လုပ်ပြီး badge ကို ပြန်ရှင်းမယ် (poll အဖြေကို
+  // မစောင့်ဘူး, ဒါမှ flash ပြန်မပေါ်)။ မရှင်းနိုင်ရင် 15s poll က ပြင်ပေးမယ်။
   const open = useCallback(
     async (conversation: AdminConversation) => {
       setSelected(conversation);
       setError("");
       setMessages([]);
       await loadMessages(conversation._id);
+
+      if (!conversation.unreadCountByAdmin) return;
+
+      void api
+        .adminMarkConversationRead(conversation._id)
+        .then(() => {
+          setConversations((prev) =>
+            prev.map((c) =>
+              c._id === conversation._id ? { ...c, unreadCountByAdmin: 0 } : c,
+            ),
+          );
+          setSelected((current) =>
+            current?._id === conversation._id
+              ? { ...current, unreadCountByAdmin: 0 }
+              : current,
+          );
+        })
+        .catch(() => {});
     },
     [loadMessages],
   );
@@ -158,11 +218,65 @@ export default function AdminSupportPage() {
     }
   };
 
+  // အကောင့်ဖောက်ပြီးသူ = အမည်အပြည့်; မဖောက်သူ = "Guest" + guestId။
+  // Subject က conversation type ပဲ ဖြစ်လို့ identity အောက်မှာ ဒုတိယနေရာပေးတယ်။
+  const identity = (c: AdminConversation) => {
+    if (c.userId?.name) return c.userId.name;
+    if (c.guestId) return `${t("admin.support.guest")} · ${shortId(c.guestId)}`;
+    return "—";
+  };
+
+  const meta = (c: AdminConversation) =>
+    [c.userId?.phone, c.subject, c.status].filter(Boolean).join(" · ");
+
   return (
     <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-4 py-3 text-sm font-bold text-slate-800">
           {t("admin.nav.support")}
+        </div>
+
+        <div
+          className="flex gap-1 border-b border-slate-200 px-3 py-2"
+          role="tablist"
+          aria-label={t("admin.nav.support")}
+        >
+          {TAB_KEYS.map((key) => (
+            <button
+              key={key}
+              role="tab"
+              aria-selected={participant === key}
+              data-testid={`support-tab-${key}`}
+              onClick={() => setParticipant(key)}
+              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-semibold transition ${
+                participant === key
+                  ? "bg-[#ff6600] text-white"
+                  : "text-slate-500 hover:bg-slate-50"
+              }`}
+            >
+              {t(TAB_LABEL[key])}
+              {counts && (
+                <span
+                  className={
+                    participant === key ? "text-white/80" : "text-slate-400"
+                  }
+                >
+                  {counts[key]}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2 border-b border-slate-200 px-4 py-2">
+          <Search size={16} className="shrink-0 text-slate-400" />
+          <input
+            data-testid="support-search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t("admin.support.searchPlaceholder")}
+            className="w-full bg-transparent text-sm outline-none placeholder:text-slate-400"
+          />
         </div>
 
         {loading ? (
@@ -175,26 +289,56 @@ export default function AdminSupportPage() {
           </p>
         ) : (
           <ul className="max-h-[560px] divide-y divide-slate-100 overflow-y-auto">
-            {conversations.map((c) => (
-              <li key={c._id}>
-                <button
-                  onClick={() => open(c)}
-                  className={`w-full px-4 py-3 text-left transition hover:bg-slate-50 ${
-                    selected?._id === c._id ? "bg-orange-50" : ""
-                  }`}
-                >
-                  <p className="truncate text-sm font-semibold text-slate-800">
-                    {c.subject || c.userId?.name || "—"}
-                  </p>
-                  <p className="truncate text-xs text-slate-500">
-                    {c.userId?.phone ?? ""} · {c.status ?? ""}
-                  </p>
-                  <p className="mt-0.5 truncate text-xs text-slate-400">
-                    {c.lastMessagePreview ?? ""}
-                  </p>
-                </button>
-              </li>
-            ))}
+            {conversations.map((c) => {
+              const unread = c.unreadCountByAdmin ?? 0;
+
+              return (
+                <li key={c._id}>
+                  <button
+                    onClick={() => open(c)}
+                    className={`w-full px-4 py-3 text-left transition hover:bg-slate-50 ${
+                      selected?._id === c._id ? "bg-orange-50" : ""
+                    }`}
+                  >
+                    <div className="flex items-start gap-2">
+                      <span
+                        aria-hidden="true"
+                        data-testid={unread ? "unread-dot" : undefined}
+                        className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
+                          unread ? "bg-red-500" : "bg-transparent"
+                        }`}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p
+                          className={`truncate text-sm ${
+                            unread
+                              ? "font-bold text-slate-900"
+                              : "font-medium text-slate-500"
+                          }`}
+                        >
+                          {identity(c)}
+                        </p>
+                        <p className="truncate text-xs text-slate-500">
+                          {meta(c)}
+                        </p>
+                        <p className="mt-0.5 truncate text-xs text-slate-400">
+                          {c.lastMessagePreview ?? ""}
+                        </p>
+                      </div>
+                      {unread > 0 && (
+                        <span
+                          data-testid="unread-badge"
+                          title={t("admin.support.unread", { count: unread })}
+                          className="shrink-0 rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white"
+                        >
+                          {unread > 99 ? "99+" : unread}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
@@ -207,13 +351,11 @@ export default function AdminSupportPage() {
         ) : (
           <>
             <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-              <div>
+              <div data-testid="support-header">
                 <p className="text-sm font-bold text-slate-800">
-                  {selected.subject || selected.userId?.name}
+                  {identity(selected)}
                 </p>
-                <p className="text-xs text-slate-500">
-                  {selected.userId?.phone ?? ""}
-                </p>
+                <p className="text-xs text-slate-500">{meta(selected)}</p>
               </div>
               <button
                 onClick={close}

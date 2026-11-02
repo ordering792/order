@@ -9,7 +9,15 @@ router.post("/plans", auth, adminOrOwner, controller.createPlan);
 router.get("/plans", auth, adminOrOwner, controller.adminList);
 router.get("/plans/my", auth, controller.myPlan);
 router.get("/plans/:id", auth, adminOrOwner, controller.getPlan);
+router.patch("/plans/:id", auth, adminOrOwner, controller.updatePlan);
 router.post("/plans/:id/generate", auth, adminOrOwner, controller.generate);
+// Round အတွင်း lucky tag ထပ်ထည့်တာ — မစမ်းသေးတဲ့ order ကိုပဲ backend က တားတယ်။
+router.post(
+  "/plans/:id/lucky-positions",
+  auth,
+  adminOrOwner,
+  controller.addLuckyPosition,
+);
 router.delete("/plans/:id", auth, adminOrOwner, controller.deletePlan);
 
 module.exports = router;

@@ -5,6 +5,9 @@ const WALLET_NOTES = {
   TASK_COMMISSION: "Task commission",
   REFERRAL_BONUS: "Referral bonus",
   LUCKY_ORDER_DEPOSIT: "Lucky order deposit",
+  // Admin က balance ကို လက်ဖြင့် ညှိတဲ့ entry — profit stat ($match note) တွေမှာ
+  // commission မရေတွက်ခံရအောင် သီးသန့် value သုံးတယ်။
+  ADMIN_ADJUST: "Admin adjustment",
 };
 
 module.exports = { WALLET_NOTES };

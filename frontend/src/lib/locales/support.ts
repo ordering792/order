@@ -9,6 +9,7 @@ export const supportDict: Dict = {
     "support.sendFailed": "Failed to send message.",
     "support.inputPlaceholder": "Type your message here...",
     "support.subject": "General Support",
+    "support.guestChat": "Guest Chat",
   },
   es: {
     "support.title": "Atención al cliente",
@@ -18,6 +19,7 @@ export const supportDict: Dict = {
     "support.sendFailed": "No se pudo enviar el mensaje.",
     "support.inputPlaceholder": "Escribe tu mensaje aquí...",
     "support.subject": "Soporte general",
+    "support.guestChat": "Chat de invitado",
   },
   pt: {
     "support.title": "Atendimento ao cliente",
@@ -27,6 +29,7 @@ export const supportDict: Dict = {
     "support.sendFailed": "Falha ao enviar a mensagem.",
     "support.inputPlaceholder": "Digite sua mensagem aqui...",
     "support.subject": "Suporte geral",
+    "support.guestChat": "Chat de convidado",
   },
   ar: {
     "support.title": "دعم العملاء",
@@ -36,6 +39,7 @@ export const supportDict: Dict = {
     "support.sendFailed": "فشل إرسال الرسالة.",
     "support.inputPlaceholder": "اكتب رسالتك هنا...",
     "support.subject": "دعم عام",
+    "support.guestChat": "دردشة كضيف",
   },
   hi: {
     "support.title": "ग्राहक सहायता",
@@ -45,6 +49,7 @@ export const supportDict: Dict = {
     "support.sendFailed": "संदेश भेजने में विफल।",
     "support.inputPlaceholder": "यहाँ अपना संदेश लिखें...",
     "support.subject": "सामान्य सहायता",
+    "support.guestChat": "अतिथि चैट",
   },
   ja: {
     "support.title": "カスタマーサポート",
@@ -54,6 +59,7 @@ export const supportDict: Dict = {
     "support.sendFailed": "メッセージを送信できませんでした。",
     "support.inputPlaceholder": "メッセージを入力してください...",
     "support.subject": "一般サポート",
+    "support.guestChat": "ゲストチャット",
   },
   th: {
     "support.title": "ฝ่ายสนับสนุนลูกค้า",
@@ -63,6 +69,7 @@ export const supportDict: Dict = {
     "support.sendFailed": "ส่งข้อความไม่สำเร็จ",
     "support.inputPlaceholder": "พิมพ์ข้อความของคุณที่นี่...",
     "support.subject": "สนับสนุนทั่วไป",
+    "support.guestChat": "แชทในฐานะแขก",
   },
   ko: {
     "support.title": "고객 지원",
@@ -72,6 +79,7 @@ export const supportDict: Dict = {
     "support.sendFailed": "메시지 전송에 실패했습니다.",
     "support.inputPlaceholder": "메시지를 입력하세요...",
     "support.subject": "일반 지원",
+    "support.guestChat": "게스트 채팅",
   },
   zh: {
     "support.title": "客户支持",
@@ -81,5 +89,6 @@ export const supportDict: Dict = {
     "support.sendFailed": "发送消息失败。",
     "support.inputPlaceholder": "在此输入消息...",
     "support.subject": "一般支持",
+    "support.guestChat": "访客聊天",
   },
 };

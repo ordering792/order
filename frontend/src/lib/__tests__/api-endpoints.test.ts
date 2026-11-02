@@ -174,4 +174,54 @@ describe("api endpoints", () => {
       );
     });
   });
+
+  describe("support guest session", () => {
+    it("mints a guestId for a logged-out GET", async () => {
+      mockFetch.mockResolvedValue(jsonResponse({ conversations: [], total: 0 }));
+
+      await api.myConversations();
+
+      const guestId = localStorage.getItem("guestId");
+      expect(guestId).toMatch(/^[0-9a-f-]{32,36}$/);
+      expect(mockFetch.mock.calls[0][0]).toBe(
+        `http://localhost:5000/api/support/conversations?guestId=${guestId}`
+      );
+    });
+
+    it("reuses the stored guestId instead of minting a new one", async () => {
+      localStorage.setItem("guestId", "guest-stable-id");
+      mockFetch.mockResolvedValue(jsonResponse({ conversations: [], total: 0 }));
+
+      await api.myConversations();
+      await api.myConversations();
+
+      expect(localStorage.getItem("guestId")).toBe("guest-stable-id");
+      expect(mockFetch.mock.calls[1][0]).toContain("guestId=guest-stable-id");
+    });
+
+    it("puts guestId in the body of a logged-out POST", async () => {
+      localStorage.setItem("guestId", "guest-post-id");
+      mockFetch.mockResolvedValueOnce(jsonResponse({ conversation: {} }));
+
+      await api.startConversation({ subject: "Broken deposit" });
+
+      const init = mockFetch.mock.calls[0][1] as RequestInit;
+      expect(JSON.parse(init.body as string)).toEqual({
+        subject: "Broken deposit",
+        guestId: "guest-post-id",
+      });
+    });
+
+    it("never sends guestId once a token exists", async () => {
+      localStorage.setItem("token", "mytoken");
+      mockFetch.mockResolvedValue(jsonResponse({ conversations: [], total: 0 }));
+
+      await api.myConversations();
+
+      expect(localStorage.getItem("guestId")).toBeNull();
+      expect(mockFetch.mock.calls[0][0]).toBe(
+        "http://localhost:5000/api/support/conversations"
+      );
+    });
+  });
 });

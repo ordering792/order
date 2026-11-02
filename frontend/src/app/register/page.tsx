@@ -14,7 +14,7 @@ import {
   Eye,
   EyeOff,
   ChevronDown,
-  ArrowLeft,
+  Headphones,
 } from "lucide-react";
 import CountryModal from "../components/CountryModal";
 import CountryLanguageModal from "../components/CountryLanguageModal";
@@ -80,8 +80,14 @@ export default function RegisterPage() {
           <div className="absolute inset-0 bg-black/20" />
 
           <header className="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-4 pt-4">
-            <Link href="/login" className="flex h-10 w-10 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-sm transition hover:bg-black/40">
-              <ArrowLeft size={20} />
+            <Link
+              href="/support"
+              className="flex h-10 items-center gap-1.5 rounded-full bg-black/30 px-3 text-white backdrop-blur-sm transition hover:bg-black/40"
+            >
+              <Headphones size={18} />
+              <span className="text-[11px] font-bold tracking-wide">
+                {t("support.guestChat")}
+              </span>
             </Link>
             <h1 className="absolute left-1/2 -translate-x-1/2 text-[18px] font-bold tracking-wider text-white">
               Rakuten

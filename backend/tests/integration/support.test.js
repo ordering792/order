@@ -292,6 +292,86 @@ describe("Support endpoints", () => {
       expect(msg.readAt).not.toBeNull();
     });
 
+    it("searches conversations by customer name", async () => {
+      const admin = await createUser("admin");
+      const token = makeToken(admin);
+
+      const customer = await User.create({
+        name: "Thura Kaung",
+        phone: "0977000111",
+        passwordHash: await bcrypt.hash("password123", 10),
+        invitationCode: "SEARCH01",
+      });
+      await Conversation.create({ userId: customer._id, subject: "Deposit" });
+      await Conversation.create({ guestId: "g-none", subject: "Deposit" });
+
+      const res = await request(app)
+        .get("/api/support/admin/conversations")
+        .query({ search: "thura" })
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.conversations).toHaveLength(1);
+      expect(res.body.conversations[0].userId._id).toBe(customer._id.toString());
+    });
+
+    it("searches conversations by customer phone", async () => {
+      const admin = await createUser("admin");
+      const token = makeToken(admin);
+
+      const customer = await User.create({
+        name: "Phone Search",
+        phone: "0944556677",
+        passwordHash: await bcrypt.hash("password123", 10),
+        invitationCode: "SEARCH02",
+      });
+      await Conversation.create({ userId: customer._id, subject: "Withdraw" });
+
+      const res = await request(app)
+        .get("/api/support/admin/conversations")
+        .query({ search: "556677" })
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.body.conversations).toHaveLength(1);
+      expect(res.body.conversations[0].userId.phone).toBe("0944556677");
+    });
+
+    it("searches conversations by guestId", async () => {
+      const admin = await createUser("admin");
+      const token = makeToken(admin);
+
+      await Conversation.create({ guestId: "guest-aa77bb99", subject: "Hello" });
+      await Conversation.create({ guestId: "guest-cc88dd00", subject: "Hello" });
+
+      const res = await request(app)
+        .get("/api/support/admin/conversations")
+        .query({ search: "aa77bb" })
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.body.conversations).toHaveLength(1);
+      expect(res.body.conversations[0].guestId).toBe("guest-aa77bb99");
+    });
+
+    it("combines search with status filter", async () => {
+      const admin = await createUser("admin");
+      const token = makeToken(admin);
+
+      await Conversation.create({ guestId: "g-open", subject: "Report" });
+      await Conversation.create({
+        guestId: "g-closed",
+        subject: "Report",
+        status: "closed",
+      });
+
+      const res = await request(app)
+        .get("/api/support/admin/conversations")
+        .query({ search: "Report", status: "open" })
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.body.conversations).toHaveLength(1);
+      expect(res.body.conversations[0].guestId).toBe("g-open");
+    });
+
     it("non-admin cannot access admin endpoints", async () => {
       const user = await createUser();
       const token = makeToken(user);
@@ -317,6 +397,156 @@ describe("Support endpoints", () => {
         .set("Authorization", `Bearer ${token}`);
 
       expect(res.status).toBe(400);
+    });
+  });
+
+  describe("unread counts and participant tabs", () => {
+    it("splits the list by participant type", async () => {
+      const admin = await createUser("admin");
+      const token = makeToken(admin);
+      const customer = await createUser();
+
+      await Conversation.create({ guestId: "g-tab-1", subject: "Guest issue" });
+      await Conversation.create({ userId: customer._id, subject: "User issue" });
+
+      const guests = await request(app)
+        .get("/api/support/admin/conversations")
+        .query({ participant: "guests" })
+        .set("Authorization", `Bearer ${token}`);
+      expect(guests.status).toBe(200);
+      expect(guests.body.conversations).toHaveLength(1);
+      expect(guests.body.conversations[0].subject).toBe("Guest issue");
+
+      const users = await request(app)
+        .get("/api/support/admin/conversations")
+        .query({ participant: "users" })
+        .set("Authorization", `Bearer ${token}`);
+      expect(users.status).toBe(200);
+      expect(users.body.conversations).toHaveLength(1);
+      expect(users.body.conversations[0].subject).toBe("User issue");
+
+      const all = await request(app)
+        .get("/api/support/admin/conversations")
+        .set("Authorization", `Bearer ${token}`);
+      expect(all.body.conversations).toHaveLength(2);
+    });
+
+    it("counts conversations per tab and ignores the search term", async () => {
+      const admin = await createUser("admin");
+      const token = makeToken(admin);
+      const customer = await createUser();
+
+      await Conversation.create({ guestId: "g-count-1" });
+      await Conversation.create({ guestId: "g-count-2" });
+      await Conversation.create({ userId: customer._id });
+
+      const res = await request(app)
+        .get("/api/support/admin/conversations")
+        .query({ search: "zzz-no-match" })
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.conversations).toHaveLength(0);
+      // Tab ဂဏန်းတွေက mailbox အလိုက် স্থির — search ရိုက်တိုင်း မပြောင်းဘူး။
+      expect(res.body.counts).toEqual({ all: 3, users: 1, guests: 2 });
+    });
+
+    it("counts only unread customer messages", async () => {
+      const admin = await createUser("admin");
+      const token = makeToken(admin);
+
+      const conv = await Conversation.create({ guestId: GUEST_ID });
+      await Message.create({
+        conversationId: conv._id,
+        senderType: "customer",
+        guestId: GUEST_ID,
+        body: "first",
+      });
+      await Message.create({
+        conversationId: conv._id,
+        senderType: "customer",
+        guestId: GUEST_ID,
+        body: "second",
+      });
+      await Message.create({
+        conversationId: conv._id,
+        senderType: "admin",
+        userId: admin._id,
+        body: "our reply does not count",
+      });
+
+      const res = await request(app)
+        .get("/api/support/admin/conversations")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.conversations[0].unreadCountByAdmin).toBe(2);
+    });
+
+    it("clears the unread count once the admin marks it read", async () => {
+      const admin = await createUser("admin");
+      const token = makeToken(admin);
+
+      const conv = await Conversation.create({ guestId: GUEST_ID });
+      await Message.create({
+        conversationId: conv._id,
+        senderType: "customer",
+        guestId: GUEST_ID,
+        body: "please read",
+      });
+
+      const before = await request(app)
+        .get("/api/support/admin/conversations")
+        .set("Authorization", `Bearer ${token}`);
+      expect(before.body.conversations[0].unreadCountByAdmin).toBe(1);
+
+      const read = await request(app)
+        .post(`/api/support/admin/conversations/${conv._id}/read`)
+        .set("Authorization", `Bearer ${token}`);
+      expect(read.status).toBe(200);
+
+      const after = await request(app)
+        .get("/api/support/admin/conversations")
+        .set("Authorization", `Bearer ${token}`);
+      expect(after.body.conversations[0].unreadCountByAdmin).toBe(0);
+    });
+
+    it("rejects an unknown participant value", async () => {
+      const admin = await createUser("admin");
+      const token = makeToken(admin);
+
+      const res = await request(app)
+        .get("/api/support/admin/conversations")
+        .query({ participant: "owners" })
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(400);
+    });
+
+    it("blocks an owner from marking another owner's conversation read", async () => {
+      const ownerA = await createUser("owner");
+      const ownerB = await createUser("owner");
+      const customer = await createUser("user");
+
+      const conv = await Conversation.create({
+        userId: customer._id,
+        ownerId: ownerB._id,
+      });
+      await Message.create({
+        conversationId: conv._id,
+        senderType: "customer",
+        userId: customer._id,
+        body: "mine only",
+      });
+
+      const res = await request(app)
+        .post(`/api/support/admin/conversations/${conv._id}/read`)
+        .set("Authorization", `Bearer ${makeToken(ownerA)}`);
+
+      expect(res.status).toBe(404);
+
+      const msg = await Message.findOne({ conversationId: conv._id });
+      expect(msg.readAt).toBeNull();
     });
   });
 

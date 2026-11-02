@@ -13,8 +13,8 @@ import { api, ApiError } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { useT } from "../../lib/i18n";
 import { getSocket } from "../../lib/socket";
+import { ensureGuestId } from "../../lib/guestId";
 import { useToast } from "../../lib/useToast";
-import RequireAuth from "../components/RequireAuth";
 import Toast from "../components/Toast";
 
 interface ChatMessage {
@@ -36,8 +36,9 @@ export default function SupportPage() {
   const [loading, setLoading] = useState(true);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  // Login လုပ်ထားသူရဲ့ conversation ကို user state ပြောင်းတိုင်း ပြန်ဖတ်တယ်။
+  // Login မလုပ်ရင် api layer က guestId နဲ့ တင်ပို့လို့ guest အတိုင်း ဆက်သုံးလို့ရ။
   useEffect(() => {
-    if (!user) return;
     setLoading(true);
     api.myConversations()
       .then((res) => {
@@ -74,7 +75,9 @@ export default function SupportPage() {
   useEffect(() => {
     if (!conversationId) return;
 
-    const socket = getSocket();
+    // Guest handshake identity — api call တွေက conversationId ကို ပြန်ပေးပြီးချိန်မှာ
+    // guestId ရှိပြီးသား (token ရှိရင် ensureGuestId က null ပြလို့ guest path မဝင်)။
+    const socket = getSocket(ensureGuestId() ?? undefined);
     if (!socket) return;
 
     const join = () => {
@@ -154,7 +157,6 @@ export default function SupportPage() {
   };
 
   return (
-    <RequireAuth>
     <div className="bg-[#1e293b] flex justify-center items-center min-h-screen m-0 p-0 overflow-hidden">
       <div className="w-full max-w-[500px] h-screen bg-white shadow-2xl flex flex-col justify-between relative overflow-hidden">
 
@@ -267,6 +269,5 @@ export default function SupportPage() {
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #ff782d; border-radius: 10px; }
       `}</style>
     </div>
-    </RequireAuth>
   );
 }

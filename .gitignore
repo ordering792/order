@@ -33,6 +33,7 @@ playwright-results.json
 # Editor / OS
 .vscode/
 .idea/
+.qoder/
 .DS_Store
 Thumbs.db
 *.swp

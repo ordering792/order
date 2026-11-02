@@ -53,7 +53,7 @@ export default function TaskPanel({
               <th className="px-4 py-2">{t("admin.field.title")}</th>
               <th className="px-4 py-2">{t("admin.field.price")}</th>
               <th className="px-4 py-2">{t("admin.field.status")}</th>
-              <th className="px-4 py-2">Actions</th>
+              <th className="px-4 py-2">{t("admin.field.actions")}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -81,18 +81,20 @@ export default function TaskPanel({
                       className={`rounded-md px-2 py-1 text-[11px] font-semibold ${
                         task.status === "completed"
                           ? "bg-emerald-50 text-emerald-600"
-                          : "bg-amber-50 text-amber-600"
+                          : task.status === "assigned"
+                            ? "bg-amber-50 text-amber-600"
+                            : "bg-slate-100 text-slate-500"
                       }`}
                     >
                       {task.status === "completed"
                         ? t("admin.status.accepted")
                         : task.status === "assigned"
                           ? t("admin.status.pending")
-                          : t("admin.status.draft")}
+                          : t("admin.status.available")}
                     </span>
                   </td>
                   <td className="px-4 py-2">
-                        {task.status === "assigned" && (
+                    {task.status === "assigned" && (
                       <button
                         onClick={() => onComplete(task)}
                         disabled={busyTaskId === task._id}

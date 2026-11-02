@@ -21,6 +21,7 @@ const Product = require("../../src/models/Product");
 const Task = require("../../src/models/Task");
 const Transaction = require("../../src/models/Transaction");
 const WalletLedger = require("../../src/models/WalletLedger");
+const { toCents } = require("../../src/utils/money");
 
 const JWT_SECRET = process.env.JWT_SECRET || "test-secret";
 
@@ -118,6 +119,37 @@ describe("Admin & owner endpoints", () => {
       expect(res.body.users[0]._id).toBe(target._id.toString());
     });
 
+    it("lists most recent login first, never-signed-in last", async () => {
+      const admin = await createUser("admin", {
+        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      });
+      const stale = await createUser("user", {
+        createdAt: new Date("2026-01-02T00:00:00.000Z"),
+        lastLoginAt: new Date("2026-02-01T08:00:00.000Z"),
+      });
+      const fresh = await createUser("user", {
+        createdAt: new Date("2026-05-01T00:00:00.000Z"),
+        lastLoginAt: new Date("2026-10-20T08:00:00.000Z"),
+      });
+      const never = await createUser("user", {
+        createdAt: new Date("2026-09-01T00:00:00.000Z"),
+      });
+
+      const res = await request(app)
+        .get("/api/admin/users")
+        .set("Authorization", `Bearer ${makeToken(admin)}`);
+
+      expect(res.status).toBe(200);
+      // lastLoginAt descending first; the two never-signed-in rows then fall
+      // back to createdAt descending, so the newer join outranks the older.
+      expect(res.body.users.map((u) => u._id.toString())).toEqual([
+        fresh._id.toString(),
+        stale._id.toString(),
+        never._id.toString(),
+        admin._id.toString(),
+      ]);
+    });
+
     it("regular user cannot list users", async () => {
       const user = await createUser("user");
 
@@ -208,6 +240,77 @@ describe("Admin & owner endpoints", () => {
         .patch(`/api/admin/users/${admin._id}`)
         .set("Authorization", `Bearer ${makeToken(admin)}`)
         .send({ role: "user" });
+
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe("Admin note (PATCH + GET /api/admin/users)", () => {
+    it("admin stores a note and reads it back in the list", async () => {
+      const admin = await createUser("admin");
+      const user = await createUser("user");
+
+      const res = await request(app)
+        .patch(`/api/admin/users/${user._id}`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ adminNote: "  deposit proof looks edited  " });
+
+      expect(res.status).toBe(200);
+      expect(res.body.user.adminNote).toBe("deposit proof looks edited");
+
+      const list = await request(app)
+        .get("/api/admin/users")
+        .set("Authorization", `Bearer ${makeToken(admin)}`);
+
+      expect(
+        list.body.users.find((row) => row._id === user._id.toString()).adminNote,
+      ).toBe("deposit proof looks edited");
+    });
+
+    it("owner list response never carries the note", async () => {
+      const admin = await createUser("admin");
+      const owner = await createUser("owner");
+      const downline = await createUser("user", { ownerId: owner._id });
+
+      await request(app)
+        .patch(`/api/admin/users/${downline._id}`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ adminNote: "watch this account" });
+
+      const res = await request(app)
+        .get("/api/admin/users")
+        .set("Authorization", `Bearer ${makeToken(owner)}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.users).toHaveLength(2);
+      for (const row of res.body.users) {
+        expect(row).not.toHaveProperty("adminNote");
+      }
+    });
+
+    it("admin clears a note with null", async () => {
+      const admin = await createUser("admin");
+      const user = await createUser("user", { adminNote: "temporary" });
+
+      const res = await request(app)
+        .patch(`/api/admin/users/${user._id}`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ adminNote: null });
+
+      expect(res.status).toBe(200);
+
+      const stored = await User.findById(user._id).select("+adminNote");
+      expect(stored.adminNote).toBeNull();
+    });
+
+    it("rejects a note longer than 500 characters", async () => {
+      const admin = await createUser("admin");
+      const user = await createUser("user");
+
+      const res = await request(app)
+        .patch(`/api/admin/users/${user._id}`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ adminNote: "n".repeat(501) });
 
       expect(res.status).toBe(400);
     });
@@ -658,6 +761,398 @@ describe("Admin & owner endpoints", () => {
         .send({ products: [{ name: "X", price: "10.00" }] });
 
       expect(res.status).toBe(403);
+    });
+  });
+
+  describe("PUT /api/admin/users/:id/password", () => {
+    it("replaces the hash and bumps tokenVersion", async () => {
+      const admin = await createUser("admin");
+      const target = await createUser("user");
+      const oldHash = target.passwordHash;
+
+      const res = await request(app)
+        .put(`/api/admin/users/${target._id}/password`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ password: "newpass456" });
+
+      expect(res.status).toBe(200);
+
+      const updated = await User.findById(target._id).select("+passwordHash");
+      expect(updated.passwordHash).not.toBe(oldHash);
+      expect(await bcrypt.compare("newpass456", updated.passwordHash)).toBe(
+        true,
+      );
+      expect(await bcrypt.compare("password123", updated.passwordHash)).toBe(
+        false,
+      );
+      expect(updated.tokenVersion).toBe(1);
+    });
+
+    it("signs the target out of the session issued before the reset", async () => {
+      const admin = await createUser("admin");
+      const target = await createUser("user");
+      const issuedToken = makeToken(target);
+
+      await request(app)
+        .get("/api/auth/me")
+        .set("Authorization", `Bearer ${issuedToken}`)
+        .expect(200);
+
+      await request(app)
+        .put(`/api/admin/users/${target._id}/password`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ password: "newpass456" })
+        .expect(200);
+
+      const stale = await request(app)
+        .get("/api/auth/me")
+        .set("Authorization", `Bearer ${issuedToken}`);
+
+      expect(stale.status).toBe(401);
+      expect(stale.body.message).toMatch(/session expired/i);
+
+      const relogin = await request(app)
+        .post("/api/auth/login")
+        .send({ phone: target.phone, password: "newpass456" });
+
+      expect(relogin.status).toBe(200);
+      expect(relogin.body.user.id).toBe(target._id.toString());
+    });
+
+    it("refuses to reset another admin's password", async () => {
+      const admin = await createUser("admin");
+      const peer = await createUser("admin");
+
+      const res = await request(app)
+        .put(`/api/admin/users/${peer._id}/password`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ password: "newpass456" });
+
+      expect(res.status).toBe(403);
+
+      const untouched = await User.findById(peer._id).select("+passwordHash");
+      expect(untouched.passwordHash).toBe(peer.passwordHash);
+      expect(untouched.tokenVersion ?? 0).toBe(0);
+    });
+
+    it("owners cannot reset passwords", async () => {
+      const owner = await createUser("owner");
+      const target = await createUser("user", { ownerId: owner._id });
+
+      const res = await request(app)
+        .put(`/api/admin/users/${target._id}/password`)
+        .set("Authorization", `Bearer ${makeToken(owner)}`)
+        .send({ password: "newpass456" });
+
+      expect(res.status).toBe(403);
+    });
+
+    it("rejects a password that trims below six characters", async () => {
+      const admin = await createUser("admin");
+      const target = await createUser("user");
+
+      const res = await request(app)
+        .put(`/api/admin/users/${target._id}/password`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ password: "  123  " });
+
+      expect(res.status).toBe(400);
+
+      const untouched = await User.findById(target._id).select("+passwordHash");
+      expect(await bcrypt.compare("password123", untouched.passwordHash)).toBe(
+        true,
+      );
+      expect(untouched.tokenVersion ?? 0).toBe(0);
+    });
+  });
+
+  describe("PUT /api/admin/users/:id/wallet-address", () => {
+    const TRON_ADDRESS = "TQSVhFzR7pN3yKdLmXcBv8tGnWqJs4Yp2r";
+
+    it("sets the address for a user and for an owner", async () => {
+      const admin = await createUser("admin");
+      const target = await createUser("user");
+      const owner = await createUser("owner");
+
+      const res = await request(app)
+        .put(`/api/admin/users/${target._id}/wallet-address`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ walletAddress: `  ${TRON_ADDRESS} ` });
+
+      expect(res.status).toBe(200);
+      expect(res.body.walletAddress).toBe(TRON_ADDRESS);
+      expect((await User.findById(target._id)).walletAddress).toBe(TRON_ADDRESS);
+
+      const ownerRes = await request(app)
+        .put(`/api/admin/users/${owner._id}/wallet-address`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ walletAddress: TRON_ADDRESS });
+
+      expect(ownerRes.status).toBe(200);
+      expect((await User.findById(owner._id)).walletAddress).toBe(TRON_ADDRESS);
+    });
+
+    it("rejects an address that is not a TRON (TRC20) address", async () => {
+      const admin = await createUser("admin");
+      const target = await createUser("user", {
+        walletAddress: "TOldAddressPlaceholderXXXX",
+      });
+
+      const res = await request(app)
+        .put(`/api/admin/users/${target._id}/wallet-address`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ walletAddress: "0xABCDEF0123456789abcdef0123456789abcdef" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/TRC20/);
+
+      const untouched = await User.findById(target._id);
+      expect(untouched.walletAddress).toBe("TOldAddressPlaceholderXXXX");
+    });
+
+    it("blocks the change while the target has a pending withdrawal", async () => {
+      const admin = await createUser("admin");
+      const target = await createUser("user", {
+        walletAddress: "TOldAddressPlaceholderXXXX",
+      });
+
+      await Transaction.create({
+        userId: target._id,
+        type: "withdraw",
+        amount: "15.00",
+        status: "pending",
+      });
+
+      const res = await request(app)
+        .put(`/api/admin/users/${target._id}/wallet-address`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ walletAddress: TRON_ADDRESS });
+
+      expect(res.status).toBe(409);
+
+      const untouched = await User.findById(target._id);
+      expect(untouched.walletAddress).toBe("TOldAddressPlaceholderXXXX");
+    });
+
+    it("lets the change through once the withdrawal is no longer pending", async () => {
+      const admin = await createUser("admin");
+      const target = await createUser("user");
+
+      await Transaction.create({
+        userId: target._id,
+        type: "withdraw",
+        amount: "15.00",
+        status: "accepted",
+      });
+
+      const res = await request(app)
+        .put(`/api/admin/users/${target._id}/wallet-address`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ walletAddress: TRON_ADDRESS });
+
+      expect(res.status).toBe(200);
+    });
+
+    it("refuses to change another admin's address", async () => {
+      const admin = await createUser("admin");
+      const peer = await createUser("admin", {
+        walletAddress: "TPeerAdminWalletAddress000000000",
+      });
+
+      const res = await request(app)
+        .put(`/api/admin/users/${peer._id}/wallet-address`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ walletAddress: TRON_ADDRESS });
+
+      expect(res.status).toBe(403);
+
+      const untouched = await User.findById(peer._id);
+      expect(untouched.walletAddress).toBe("TPeerAdminWalletAddress000000000");
+    });
+
+    it("owners cannot change downline addresses", async () => {
+      const owner = await createUser("owner");
+      const target = await createUser("user", { ownerId: owner._id });
+
+      const res = await request(app)
+        .put(`/api/admin/users/${target._id}/wallet-address`)
+        .set("Authorization", `Bearer ${makeToken(owner)}`)
+        .send({ walletAddress: TRON_ADDRESS });
+
+      expect(res.status).toBe(403);
+    });
+  });
+
+  describe("POST /api/admin/users/:id/balance", () => {
+    it("credits the balance and writes a ledger row referencing the admin", async () => {
+      const admin = await createUser("admin");
+      const target = await createUser("user", { balance: "10.00" });
+
+      const res = await request(app)
+        .post(`/api/admin/users/${target._id}/balance`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ type: "credit", amount: "25.50", reason: "duplicate deposit" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.balance).toBe("35.50");
+
+      const updated = await User.findById(target._id);
+      expect(toCents(updated.balance.toString())).toBe(3550n);
+
+      const ledger = await WalletLedger.find({ userId: target._id });
+      expect(ledger).toHaveLength(1);
+      expect(ledger[0].type).toBe("credit");
+      expect(toCents(ledger[0].amount.toString())).toBe(2550n);
+      expect(toCents(ledger[0].balance.toString())).toBe(3550n);
+      expect(ledger[0].reference).toBe(admin._id.toString());
+      expect(ledger[0].note).toBe("Admin adjustment: duplicate deposit");
+    });
+
+    it("keeps admin adjustments out of the commission note used for profit stats", async () => {
+      const admin = await createUser("admin");
+      const target = await createUser("user", { balance: "10.00" });
+
+      await request(app)
+        .post(`/api/admin/users/${target._id}/balance`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ type: "debit", amount: "4.00" });
+
+      const ledger = await WalletLedger.findOne({ userId: target._id });
+      expect(ledger.type).toBe("debit");
+      expect(ledger.note).toBe("Admin adjustment");
+      expect(toCents((await User.findById(target._id)).balance.toString())).toBe(
+        600n,
+      );
+    });
+
+    it("blocks a debit larger than the balance without touching money or ledger", async () => {
+      const admin = await createUser("admin");
+      const target = await createUser("user", { balance: "10.00" });
+
+      const res = await request(app)
+        .post(`/api/admin/users/${target._id}/balance`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ type: "debit", amount: "50.00" });
+
+      expect(res.status).toBe(409);
+
+      const after = await User.findById(target._id);
+      expect(toCents(after.balance.toString())).toBe(1000n);
+      expect(await WalletLedger.countDocuments({ userId: target._id })).toBe(0);
+    });
+
+    it("rejects a negative or zero amount", async () => {
+      const admin = await createUser("admin");
+      const target = await createUser("user", { balance: "10.00" });
+
+      const negative = await request(app)
+        .post(`/api/admin/users/${target._id}/balance`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ type: "credit", amount: "-5.00" });
+
+      expect(negative.status).toBe(400);
+
+      const zero = await request(app)
+        .post(`/api/admin/users/${target._id}/balance`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ type: "credit", amount: "0" });
+
+      expect(zero.status).toBe(400);
+      expect(toCents((await User.findById(target._id)).balance.toString())).toBe(
+        1000n,
+      );
+    });
+
+    it("owners cannot adjust balances", async () => {
+      const owner = await createUser("owner");
+      const target = await createUser("user", {
+        ownerId: owner._id,
+        balance: "10.00",
+      });
+
+      const res = await request(app)
+        .post(`/api/admin/users/${target._id}/balance`)
+        .set("Authorization", `Bearer ${makeToken(owner)}`)
+        .send({ type: "credit", amount: "5.00" });
+
+      expect(res.status).toBe(403);
+    });
+
+    it("refuses to adjust a burned account", async () => {
+      const admin = await createUser("admin");
+      const target = await createUser("user", {
+        balance: "10.00",
+        status: "burned",
+      });
+
+      const res = await request(app)
+        .post(`/api/admin/users/${target._id}/balance`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ type: "credit", amount: "5.00" });
+
+      expect(res.status).toBe(409);
+    });
+  });
+
+  describe("Login device capture", () => {
+    const CHROME_ON_WINDOWS =
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
+    it("stores ip, login time and user agent on a successful login", async () => {
+      await createUser("user", { phone: "0912345678" });
+
+      const res = await request(app)
+        .post("/api/auth/login")
+        .set("User-Agent", CHROME_ON_WINDOWS)
+        .send({ phone: "0912345678", password: "password123" });
+
+      expect(res.status).toBe(200);
+
+      const saved = await User.findOne({ phone: "0912345678" });
+      expect(saved.lastUserAgent).toBe(CHROME_ON_WINDOWS);
+      expect(saved.lastLoginAt).toBeInstanceOf(Date);
+      expect(saved.ipAddress).toBeTruthy();
+    });
+
+    it("leaves the previous device untouched when the password is wrong", async () => {
+      const target = await createUser("user", {
+        phone: "0912345679",
+        ipAddress: "203.0.113.9",
+        lastUserAgent: "older-session",
+      });
+      const previousLoginAt = target.lastLoginAt;
+
+      const res = await request(app)
+        .post("/api/auth/login")
+        .set("User-Agent", CHROME_ON_WINDOWS)
+        .send({ phone: "0912345679", password: "wrong-password" });
+
+      expect(res.status).toBe(401);
+
+      const saved = await User.findOne({ phone: "0912345679" });
+      expect(saved.lastUserAgent).toBe("older-session");
+      expect(saved.ipAddress).toBe("203.0.113.9");
+      expect(saved.lastLoginAt).toBe(previousLoginAt);
+    });
+
+    it("exposes a readable device label in the admin user list", async () => {
+      const admin = await createUser("admin");
+      const target = await createUser("user", {
+        ipAddress: "203.0.113.42",
+        lastUserAgent: CHROME_ON_WINDOWS,
+      });
+
+      const res = await request(app)
+        .get("/api/admin/users")
+        .set("Authorization", `Bearer ${makeToken(admin)}`);
+
+      expect(res.status).toBe(200);
+
+      const row = res.body.users.find(
+        (user) => user._id === target._id.toString(),
+      );
+      expect(row.ipAddress).toBe("203.0.113.42");
+      expect(row.lastDevice).toBe("Chrome · Windows");
     });
   });
 });

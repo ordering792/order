@@ -44,33 +44,14 @@ async function assertPlanReadable(plan, actor) {
   throw httpError(403, "Forbidden");
 }
 
-async function createPlan({ userId, totalOrders, luckyPositions }, actor) {
-  const user = await assertTargetUser(userId, actor);
-
-  // Plan အသစ် ဖန်တီးခွင့် — အရင် plan က "completed" ဖြစ်ပြီးမှသာ (round ၂၊ ၃ …)။
-  // မပြီးတဲ့ plan ရှိနေရင် ထပ်ဖန်တီးမရ။
-  const activePlan = await OrderPlan.findOne({
-    userId: user._id,
-    status: { $ne: "completed" },
-  });
-
-  if (activePlan) {
-    throw httpError(409, "User already has an order plan");
-  }
-
-  const existingTasks = await Task.exists({
-    userId: user._id,
-    orderPlanId: null,
-  });
-
-  if (existingTasks) {
-    throw httpError(409, "User already has tasks");
-  }
-
+// Lucky position တွေကို plan save မလုပ်ခင် စစ်တယ်။ createPlan (draft အသစ်) နဲ့
+// updatePlan (draft ပြင်) နှစ်ခုလုံး ဒီတစ်ခုတည်းကို သုံးတယ် — rule နှစ်နေရာ
+// ကွဲသွားရင် generated order တွေက plan နဲ့ မကိုက်တော့ဘူး။
+async function normalizeLuckyPositions(positions, totalOrders) {
   const seenNumbers = new Set();
   const productIds = [];
 
-  for (const position of luckyPositions) {
+  for (const position of positions) {
     if (position.orderNumber > totalOrders) {
       throw httpError(400, "Lucky position must be within total order count");
     }
@@ -110,18 +91,46 @@ async function createPlan({ userId, totalOrders, luckyPositions }, actor) {
     }
   }
 
+  return positions.map((position) => ({
+    orderNumber: position.orderNumber,
+    productId: position.productId || null,
+    requiredDeposit: position.requiredDeposit,
+    luckyCommission: position.luckyCommission,
+  }));
+}
+
+async function createPlan({ userId, totalOrders, luckyPositions }, actor) {
+  const user = await assertTargetUser(userId, actor);
+
+  // Plan အသစ် ဖန်တီးခွင့် — အရင် plan က "completed" ဖြစ်ပြီးမှသာ (round ၂၊ ၃ …)။
+  // မပြီးတဲ့ plan ရှိနေရင် ထပ်ဖန်တီးမရ။
+  const activePlan = await OrderPlan.findOne({
+    userId: user._id,
+    status: { $ne: "completed" },
+  });
+
+  if (activePlan) {
+    throw httpError(409, "User already has an order plan");
+  }
+
+  const existingTasks = await Task.exists({
+    userId: user._id,
+    orderPlanId: null,
+  });
+
+  if (existingTasks) {
+    throw httpError(409, "User already has tasks");
+  }
+
+  const positions = await normalizeLuckyPositions(luckyPositions, totalOrders);
+
   let plan;
 
   try {
     plan = await OrderPlan.create({
       userId: user._id,
       totalOrders,
-      luckyPositions: luckyPositions.map((position) => ({
-        orderNumber: position.orderNumber,
-        productId: position.productId || null,
-        requiredDeposit: position.requiredDeposit,
-        luckyCommission: position.luckyCommission,
-      })),
+      luckyPositions: positions,
     });
   } catch (err) {
     if (isDuplicateKeyError(err)) {
@@ -144,6 +153,31 @@ async function createPlan({ userId, totalOrders, luckyPositions }, actor) {
   }
 
   emitToAdmins("order:plan_created", {
+    planId: String(plan._id),
+    userId: String(plan.userId),
+    totalOrders: plan.totalOrders,
+  });
+
+  return plan;
+}
+
+// Card ပေါ်မှာ order count နဲ့ lucky tag တွေကို draft အဆင့်တွင်း ပြင်ခွင့်။
+// Generate ဖြစ်သွားရင် task တွေ အကုန်ဖန်တီးပြီးသားမို့ count ကို ပြန်မပြင်ဘူး။
+async function updatePlan(planId, { totalOrders, luckyPositions }, actor) {
+  const plan = await getPlanById(planId, actor);
+
+  if (plan.status !== "draft") {
+    throw httpError(409, "Only draft plans can be edited");
+  }
+
+  const positions = await normalizeLuckyPositions(luckyPositions, totalOrders);
+
+  plan.totalOrders = totalOrders;
+  plan.luckyPositions = positions;
+
+  await plan.save();
+
+  emitToAdmins("order:plan_updated", {
     planId: String(plan._id),
     userId: String(plan.userId),
     totalOrders: plan.totalOrders,
@@ -268,6 +302,8 @@ async function listPlans(filters) {
 
 module.exports = {
   createPlan,
+  updatePlan,
+  normalizeLuckyPositions,
   serializePlan,
   getMyPlan,
   getPlanById,

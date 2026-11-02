@@ -22,9 +22,29 @@ const userSchema = new mongoose.Schema(
       select: false,
     },
 
+    // Admin က password reset လုပ်တဲ့အခါ +1 တက်တယ်။ token ထဲက tv နဲ့
+    // မကိုက်ရင် auth middleware က 401 ပြန်တယ် — device အားလုံး ချက်ချင်း ထွက်သွားအောင်။
+    tokenVersion: {
+      type: Number,
+      default: 0,
+    },
+
     ipAddress: {
       type: String,
       default: null,
+    },
+
+    lastLoginAt: {
+      type: Date,
+      default: null,
+    },
+
+    // Raw User-Agent ကိုပဲ သိမ်းမယ် — display label ကို admin list မှာ
+    // deviceInfo() နဲ့ ချက်ချင်း တွက်တယ် (UA schema ပြောင်းရင် data မပျက်အောင်)။
+    lastUserAgent: {
+      type: String,
+      default: null,
+      maxlength: 300,
     },
 
     balance: {
@@ -71,6 +91,17 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: ["user", "owner", "admin"],
       default: "user",
+    },
+
+    // Admin သီးသန့် မှတ်စု (user တစ်ယောက်ချင်းစီ)။ select: false ကြောင့် owner/customer
+    // ဆီ သွားတဲ့ response တွေမှာ ဘယ်တော့မှ မပါ — admin user list ကပဲ +adminNote နဲ့
+    // တိုက်ရိုက် တောင်းတယ်။
+    adminNote: {
+      type: String,
+      default: null,
+      trim: true,
+      maxlength: 500,
+      select: false,
     },
 
     ownerId: {

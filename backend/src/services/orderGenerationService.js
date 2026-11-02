@@ -11,7 +11,7 @@ const {
   priceRangeForBase,
   selectProductsForRange,
 } = require("./orderSelection");
-const { getPlanById } = require("./orderPlanService");
+const { getPlanById, normalizeLuckyPositions } = require("./orderPlanService");
 const { httpError } = require("../utils/httpError");
 const { isDuplicateKeyError } = require("../utils/duplicateKey");
 const { emitToAdmins } = require("../socket");
@@ -114,10 +114,11 @@ async function loadLuckyProducts(plan, session) {
   return luckyProducts;
 }
 
-async function loadProductPool(plan, session) {
-  const reservedIds = plan.luckyPositions
-    .map((position) => position.productId)
-    .filter(Boolean);
+async function loadProductPool(plan, session, extraExcludedIds = []) {
+  const reservedIds = [
+    ...plan.luckyPositions.map((position) => position.productId).filter(Boolean),
+    ...extraExcludedIds,
+  ];
 
   const candidateDocs = await Product.find(
     reservedIds.length > 0 ? { _id: { $nin: reservedIds } } : {},
@@ -352,4 +353,163 @@ async function generateOrders({ planId, depositTransactionId }, actor) {
   }
 }
 
-module.exports = { generateOrders };
+// Round အတွင်းမှာ lucky tag အသစ် ထပ်ထည့်တယ် — user order စမ်းနေစဉ် card ပေါ်က။
+// မစမ်းသေးတဲ့ (status available) order ခုပဲ၊ ဆုံးဖြတ်ချက် (a) အရ ဒီ order တစ်ခုကိုပဲ
+// ပြောင်းတယ်။ ကျန် order တွေ price band ကို ပြန်မစီဘူး (cascade မလုပ်)။
+async function addLuckyPosition(
+  { planId, orderNumber, productId, requiredDeposit, luckyCommission },
+  actor,
+) {
+  await getPlanById(planId, actor);
+
+  const session = await mongoose.startSession();
+
+  try {
+    let updated;
+
+    await session.withTransaction(async () => {
+      const fresh = await OrderPlan.findById(planId).session(session);
+
+      if (!fresh) {
+        throw httpError(404, "Plan not found");
+      }
+
+      if (fresh.status !== "generated") {
+        throw httpError(
+          409,
+          "Lucky positions can only be added to a generated plan",
+        );
+      }
+
+      if (!fresh.currentBase) {
+        throw httpError(409, "Plan has no generation base recorded");
+      }
+
+      const [position] = await normalizeLuckyPositions(
+        [{ orderNumber, productId, requiredDeposit, luckyCommission }],
+        fresh.totalOrders,
+      );
+
+      if (
+        fresh.luckyPositions.some(
+          (existing) => existing.orderNumber === orderNumber,
+        )
+      ) {
+        throw httpError(400, "Duplicate lucky position");
+      }
+
+      const task = await Task.findOne({
+        userId: fresh.userId,
+        orderPlanId: fresh._id,
+        orderNumber,
+      }).session(session);
+
+      if (!task) {
+        throw httpError(404, `Order ${orderNumber} not found`);
+      }
+
+      if (task.status !== "available") {
+        throw httpError(409, `Order ${orderNumber} is already in progress`);
+      }
+
+      // အခု order မတင် lucky deposit တွေ base ထဲ ပါတဲ့ generation formula အတိုင်း —
+      // အထက် order တွေ အတွက် base က မပြောင်းဘူး (option a)။
+      const baseCents = projectedBaseCents(
+        toCents(fresh.currentBase.toString()),
+        fresh.luckyPositions.map((existing) => ({
+          orderNumber: existing.orderNumber,
+          requiredDepositCents: toCents(existing.requiredDeposit.toString()),
+        })),
+        orderNumber,
+      );
+
+      const { lo, hi } = priceRangeForBase(baseCents);
+
+      const usedIds = (
+        await Task.distinct("productId", {
+          orderPlanId: fresh._id,
+          _id: { $ne: task._id },
+        }).session(session)
+      ).filter(Boolean);
+
+      let chosen;
+      let priceCents;
+
+      if (position.productId) {
+        const product = await Product.findById(position.productId).session(
+          session,
+        );
+
+        if (!product) {
+          throw httpError(400, "Lucky product no longer exists");
+        }
+
+        if (usedIds.some((id) => id.equals(product._id))) {
+          throw httpError(409, "That product is already used in this round");
+        }
+
+        try {
+          priceCents = toCents(product.price.toString());
+        } catch {
+          throw httpError(400, "Lucky product has an invalid price");
+        }
+
+        if (priceCents < lo || priceCents > hi) {
+          throw httpError(
+            400,
+            `Lucky product price is outside the allowed range for order ${orderNumber}`,
+          );
+        }
+
+        chosen = product;
+      } else {
+        const [autoPicked] = selectProductsForRange(
+          await loadProductPool(fresh, session, usedIds),
+          1,
+          lo,
+          hi,
+        );
+
+        if (!autoPicked) {
+          throw httpError(
+            400,
+            `No product available for lucky order ${orderNumber}`,
+          );
+        }
+
+        chosen = autoPicked.doc;
+        priceCents = autoPicked.priceCents;
+      }
+
+      task.productName = chosen.name;
+      task.productId = chosen._id;
+      task.imageUrl = chosen.imageUrl;
+      task.code = chosen.code || "";
+      task.category = chosen.category || "";
+      task.usage = chosen.usage || "";
+      task.description = chosen.description;
+      task.price = decimal(priceCents);
+      task.commission = decimal(toCents(position.luckyCommission));
+      task.isLuckyOrder = true;
+
+      await task.save({ session });
+
+      fresh.luckyPositions.push(position);
+      await fresh.save({ session });
+
+      updated = fresh;
+    });
+
+    emitToAdmins("order:lucky_added", {
+      planId: String(updated._id),
+      userId: String(updated.userId),
+      orderNumber,
+    });
+
+    return updated;
+  } finally {
+    await session.endSession();
+  }
+}
+
+module.exports = { generateOrders, addLuckyPosition };

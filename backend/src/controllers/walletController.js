@@ -3,6 +3,15 @@ const User = require("../models/User");
 const WalletLedger = require("../models/WalletLedger");
 const asyncHandler = require("../utils/asyncHandler");
 const { WALLET_NOTES } = require("../constants/walletNotes");
+const {
+  INVALID_WALLET_ADDRESS_MESSAGE,
+  normalizeWalletAddress,
+  isTronAddress,
+} = require("../utils/walletAddress");
+const {
+  hasPendingWithdrawal,
+  PENDING_WITHDRAWAL_MESSAGE,
+} = require("../services/walletGuard");
 
 const cryptoAddressSchema = z.object({
   cryptoAddress: z.string().min(10).max(100),
@@ -146,9 +155,17 @@ exports.updateWalletAddress = asyncHandler(async (req, res) => {
     });
   }
 
-  await User.findByIdAndUpdate(req.user._id, {
-    walletAddress: parsed.data.walletAddress,
-  });
+  const walletAddress = normalizeWalletAddress(parsed.data.walletAddress);
 
-  res.json({ message: "Wallet address updated" });
+  if (!isTronAddress(walletAddress)) {
+    return res.status(400).json({ message: INVALID_WALLET_ADDRESS_MESSAGE });
+  }
+
+  if (await hasPendingWithdrawal(req.user._id)) {
+    return res.status(409).json({ message: PENDING_WITHDRAWAL_MESSAGE });
+  }
+
+  await User.findByIdAndUpdate(req.user._id, { walletAddress });
+
+  res.json({ message: "Wallet address updated", walletAddress });
 });

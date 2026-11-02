@@ -11,29 +11,32 @@ const SOCKET_URL =
   );
 
 let socket: Socket | null = null;
-let socketToken: string | null = null;
+let socketAuthKey: string | null = null;
 
-// Backend နဲ့ real-time connection (order match / complete events)
-export function getSocket(): Socket | null {
+// Backend နဲ့ real-time connection (order match / complete events)။
+// Login မလုပ်တဲ့ support visitor အတွက် guestId handshake ကိုလည်း ခွင့်ပြုတယ် —
+// backend authenticate() က token ကို အရင်ဦးစားပေးတယ်။
+export function getSocket(guestId?: string): Socket | null {
   if (typeof window === "undefined") return null;
 
   const token = getToken();
+  const authKey = token ?? (guestId ? `guest:${guestId}` : null);
 
-  if (!token) {
+  if (!authKey) {
     disconnectSocket();
     return null;
   }
 
-  // Token ပြောင်းသွားရင် (logout → အခြား user နဲ့ login) connection အသစ်
+  // Identity ပြောင်းသွားရင် (logout → အခြား user နဲ့ login) connection အသစ်
   // ချမှတယ် — မဟုတ်ရင် ယခင် user ရဲ့ order event တွေ ပြန်ရမယ်။
-  if (socket && socketToken === token) return socket;
+  if (socket && socketAuthKey === authKey) return socket;
 
   if (socket) disconnectSocket();
 
-  socketToken = token;
+  socketAuthKey = authKey;
   socket = io(SOCKET_URL, {
     path: "/socket.io",
-    auth: { token },
+    auth: token ? { token } : { guestId },
     transports: ["websocket", "polling"],
     autoConnect: true,
   });
@@ -44,5 +47,5 @@ export function getSocket(): Socket | null {
 export function disconnectSocket() {
   socket?.disconnect();
   socket = null;
-  socketToken = null;
+  socketAuthKey = null;
 }

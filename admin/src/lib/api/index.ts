@@ -2,6 +2,7 @@ import { request } from "./client";
 import type {
   ApiAdminStats,
   ApiAdminUser,
+  ApiBoardRow,
   ApiDepositSummary,
   ApiPlan,
   ApiProduct,
@@ -158,12 +159,43 @@ export const api = {
       status?: "online" | "offline" | "burned";
       cryptoAddress?: string | null;
       cryptoQrUrl?: string | null;
+      adminNote?: string | null;
     },
   ) =>
     request<{ user: ApiAdminUser }>(`/admin/users/${id}`, {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
+
+  // User ကိုယ်တိုင်မပြင်နိုင်လို့ admin က အသစ်သတ်မှတ်တာ — အဟောင်း password ကို
+  // မမေးဘူး (bcrypt)။ Backend က tokenVersion တက်ဝေ့လို့ device အားလုံး logout ဖြစ်မယ်။
+  adminResetUserPassword: (id: string, password: string) =>
+    request<{ message: string }>(`/admin/users/${encodeURIComponent(id)}/password`, {
+      method: "PUT",
+      body: JSON.stringify({ password }),
+    }),
+
+  // ငွေအမှားအယွင်းအတွက် admin လက်ဖြင့် ညှိတာ — ledger entry နဲ့တစ်ခါတည်း။
+  adminAdjustBalance: (
+    id: string,
+    body: { type: "credit" | "debit"; amount: string; reason?: string },
+  ) =>
+    request<{ balance: string }>(`/admin/users/${encodeURIComponent(id)}/balance`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  // User/owner ရဲ့ withdraw ပို့ address။ Backend က TRC20 format စစ်ပြီး
+  // pending withdrawal ရှိရင် 409 ပြန်တယ် — admin approve မလုပ်ခင် address
+  // ပြောင်းသွားရင် ငွေမှားနေမလို့။
+  adminUpdateUserWalletAddress: (id: string, walletAddress: string) =>
+    request<{ message: string; walletAddress: string }>(
+      `/admin/users/${encodeURIComponent(id)}/wallet-address`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ walletAddress }),
+      },
+    ),
 
   adminListTransactions: (params?: {
     status?: string;
@@ -304,6 +336,60 @@ export const api = {
       body: JSON.stringify({}),
     }),
 
+  // Card board — role=user အားလုံး က card တစ်ခု၊ active plan (draft/generated)
+  // တစ်ခုတည်း join လုပ်ထား။ Completed round တွေ plan: null ဖြစ်သွားမယ်။
+  adminOrderBoard: (params?: {
+    search?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const query = new URLSearchParams();
+    if (params?.search) query.set("search", params.search);
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.limit) query.set("limit", String(params.limit));
+    const qs = query.toString();
+    return request<{
+      rows: ApiBoardRow[];
+      total: number;
+      page: number;
+      pages: number;
+    }>(`/admin/order-board${qs ? `?${qs}` : ""}`);
+  },
+
+  // Draft plan မှာ order count နဲ့ lucky tag အားလုံး ပြန်သတ်မှတ်တာ။
+  adminUpdatePlan: (
+    id: string,
+    body: {
+      totalOrders: number;
+      luckyPositions?: {
+        orderNumber: number;
+        productId?: string | null;
+        requiredDeposit: string;
+        luckyCommission: string;
+      }[];
+    },
+  ) =>
+    request<{ plan: ApiPlan }>(`/orders/plans/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  // User order စမ်းနေစဉ် lucky tag ထပ်ထည့်တာ — backend က မစမ်းသေးတဲ့
+  // order ကိုပဲ ခွင့်ပြုပြီး အထက် order တွေကို ပြန်မစီဘူး။
+  adminAddLuckyPosition: (
+    id: string,
+    body: {
+      orderNumber: number;
+      productId?: string | null;
+      requiredDeposit: string;
+      luckyCommission: string;
+    },
+  ) =>
+    request<{ plan: ApiPlan }>(
+      `/orders/plans/${encodeURIComponent(id)}/lucky-positions`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+
   adminListOwners: () => request<{ owners: ApiAdminUser[] }>("/auth/owners"),
 
   adminCreateOwner: (body: {
@@ -354,14 +440,37 @@ export const api = {
       { method: "POST", body: JSON.stringify({}) },
     ),
 
-  adminListConversations: () =>
-    request<{ conversations: unknown[]; total: number }>(
-      "/support/admin/conversations",
-    ),
+  adminListConversations: (params?: {
+    search?: string;
+    status?: string;
+    participant?: "users" | "guests";
+    page?: number;
+    limit?: number;
+  }) => {
+    const query = new URLSearchParams();
+    if (params?.search) query.set("search", params.search);
+    if (params?.status) query.set("status", params.status);
+    if (params?.participant) query.set("participant", params.participant);
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.limit) query.set("limit", String(params.limit));
+    const qs = query.toString();
+
+    return request<{
+      conversations: unknown[];
+      total: number;
+      counts?: { all: number; users: number; guests: number };
+    }>(`/support/admin/conversations${qs ? `?${qs}` : ""}`);
+  },
 
   adminGetConversation: (id: string) =>
     request<{ conversation: unknown; messages: unknown[] }>(
       `/support/admin/conversations/${id}`,
+    ),
+
+  adminMarkConversationRead: (id: string) =>
+    request<{ conversation: unknown }>(
+      `/support/admin/conversations/${id}/read`,
+      { method: "POST", body: JSON.stringify({}) },
     ),
 
   adminSendMessage: (id: string, body: string) =>

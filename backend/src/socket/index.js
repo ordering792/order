@@ -11,14 +11,21 @@ async function authenticate(socket, next) {
     try {
       const payload = jwt.verify(token, process.env.JWT_SECRET);
       const User = require("../models/User");
+      const { isTokenStale } = require("../middleware/authMiddleware");
 
       // JWT ထဲက role ကို တိုက်ရိုက်မယုံဘူး — authMiddleware လိုပဲ DB ကနေ
       // ပြန်ဖတ်တယ်။ မဟုတ်ရင် burned/demote လုပ်ပြီး user က token ပျက်သည်
       // အထိ real-time access ဆက်ရမယ်။
-      const user = await User.findById(payload.userId).select("role status");
+      const user = await User.findById(payload.userId).select(
+        "role status tokenVersion",
+      );
 
       if (!user || user.status === "burned") {
         return next(new Error("Account unavailable"));
+      }
+
+      if (isTokenStale(payload, user)) {
+        return next(new Error("Session expired. Please sign in again."));
       }
 
       socket.data.userId = payload.userId;

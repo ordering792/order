@@ -19,9 +19,38 @@ const sendMessageSchema = z.object({
 const listQuerySchema = z.object({
   status: z.enum(["open", "closed"]).optional(),
   search: z.string().max(200).optional(),
+  // Support list ရှိ All / Users / Guests tab သည် identity အမျိုးအစားကို
+  // ရွေးတာ — guest conversation မှာ userId=null၊ အကောင့်ဖောက်ပြီးသူမှာ guestId=null။
+  participant: z.enum(["all", "users", "guests"]).default("all"),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(20),
 });
+
+const SEARCH_USER_ID_CAP = 200;
+
+// Admin list မှာ customer identity (name / phone / guestId) နဲ့ ရှာခွင့်ပေးတာ။
+// userId က populate လုပ်ထားတဲ့ ref ဖြစ်လို့ Mongo ကို $regex တိုက်ရိုက်မရ —
+// အမည်/ဖုန်း ကိုက်တဲ့ user id တွေကို အရင်ရှာပြီး conversation filter ထဲ ထည့်တယ်။
+// Cap မထားရင် ရှာမှုတစ်ခုက conversation count query ကို heavy ဖြစ်စေမယ်။
+async function buildSearchOr(search) {
+  const rx = new RegExp(escapeRegExp(search), "i");
+  const or = [
+    { subject: rx },
+    { lastMessagePreview: rx },
+    { guestId: rx },
+  ];
+
+  const matchedUsers = await User.find({ $or: [{ name: rx }, { phone: rx }] })
+    .select("_id")
+    .limit(SEARCH_USER_ID_CAP)
+    .lean();
+
+  if (matchedUsers.length > 0) {
+    or.push({ userId: { $in: matchedUsers.map((user) => user._id) } });
+  }
+
+  return or;
+}
 
 function customerFilter(customer, id) {
   return customer.userId
@@ -228,30 +257,82 @@ exports.adminListConversations = asyncHandler(async (req, res) => {
     });
   }
 
-  const { status, search, page, limit } = parsed.data;
+  const { status, search, participant, page, limit } = parsed.data;
   const filter = {};
+  // Tab count မှာ search ကို မထည့်ဘူး — စာရိုက်နေစဉ် ဂဏန်းပြောင်းသွားရင်
+  // admin က ဘာမှမသိလာသလို, regex count ၃ ခါ စာအမြဲထည့်ရတဲ့ ကုန်ကျစရိတ်ရယ်။
+  const scopeFilter = {};
 
-  if (status) filter.status = status;
-  if (search) {
-    const rx = new RegExp(escapeRegExp(search), "i");
-    filter.$or = [{ subject: rx }, { lastMessagePreview: rx }];
+  if (status) {
+    filter.status = status;
+    scopeFilter.status = status;
   }
+  if (search) filter.$or = await buildSearchOr(search);
 
   // Owner sees only their users' conversations; admin sees all
   if (req.user.role === "owner") {
     filter.ownerId = req.user._id;
+    scopeFilter.ownerId = req.user._id;
   }
 
-  const total = await Conversation.countDocuments(filter);
-  const conversations = await Conversation.find(filter)
-    .populate("userId", "name phone")
-    .populate("ownerId", "name phone")
-    .sort({ lastMessageAt: -1, createdAt: -1 })
-    .skip((page - 1) * limit)
-    .limit(limit)
-    .lean();
+  if (participant === "users") filter.userId = { $ne: null };
+  if (participant === "guests") filter.guestId = { $ne: null };
 
-  res.json({ conversations, total, page, limit });
+  const [total, tabRows, conversations] = await Promise.all([
+    Conversation.countDocuments(filter),
+    Conversation.aggregate([
+      { $match: scopeFilter },
+      {
+        $group: {
+          _id: null,
+          all: { $sum: 1 },
+          users: { $sum: { $cond: [{ $ne: ["$userId", null] }, 1, 0] } },
+          guests: { $sum: { $cond: [{ $ne: ["$guestId", null] }, 1, 0] } },
+        },
+      },
+    ]),
+    Conversation.find(filter)
+      .populate("userId", "name phone")
+      .populate("ownerId", "name phone")
+      .sort({ lastMessageAt: -1, createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean(),
+  ]);
+
+  const tabRow = tabRows[0];
+  const counts = {
+    all: tabRow?.all ?? 0,
+    users: tabRow?.users ?? 0,
+    guests: tabRow?.guests ?? 0,
+  };
+
+  // Admin မဖတ်ရသေးတဲ့ customer စာ အရေအတွက် — message တစ်ခုချင်း readAt
+  // ကို ကြည့်တာ။ countDocuments per conversation (N+1) အစား aggregate တစ်ခုတည်း။
+  const unreadRows = await Message.aggregate([
+    {
+      $match: {
+        conversationId: { $in: conversations.map((c) => c._id) },
+        senderType: "customer",
+        readAt: null,
+      },
+    },
+    { $group: { _id: "$conversationId", unread: { $sum: 1 } } },
+  ]);
+  const unreadById = new Map(
+    unreadRows.map((row) => [String(row._id), row.unread]),
+  );
+
+  res.json({
+    conversations: conversations.map((c) => ({
+      ...c,
+      unreadCountByAdmin: unreadById.get(String(c._id)) ?? 0,
+    })),
+    total,
+    page,
+    limit,
+    counts,
+  });
 });
 
 exports.adminGetConversation = asyncHandler(async (req, res) => {
@@ -420,6 +501,14 @@ exports.adminMarkRead = asyncHandler(async (req, res) => {
 
   if (!conversation) {
     return res.status(404).json({ message: "Conversation not found" });
+  }
+
+  // Owner က ကိုယ့် downline conversation ကိုပဲ "ဖတ်ပြီး" လက်မှတ်ရေးခွင့်ရှိတယ် —
+  // adminGetConversation နဲ့ တစ်ပြေးညီ scope။
+  if (req.user.role === "owner") {
+    if (!conversation.ownerId || !conversation.ownerId.equals(req.user._id)) {
+      return res.status(404).json({ message: "Conversation not found" });
+    }
   }
 
   conversation.unreadByAdmin = false;

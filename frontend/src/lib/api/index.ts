@@ -1,4 +1,5 @@
 import { request } from "./client";
+import { guestBody, guestQuery } from "../guestId";
 import type {
   ApiPlan,
   ApiTask,
@@ -165,33 +166,33 @@ export const api = {
 
   products: () => request<{ products: unknown[] }>("/products"),
 
-  // ---- Support ----
+  // ---- Support ---- (login မလုပ်ရင် guestId နဲ့ပဲ backend က ခွင့်ပြုတယ်)
   startConversation: (input: { subject?: string }) =>
     request<{ conversation: unknown }>("/support/conversations", {
       method: "POST",
-      body: JSON.stringify(input),
+      body: JSON.stringify({ ...input, ...guestBody() }),
     }),
 
   myConversations: () =>
     request<{ conversations: unknown[]; total: number }>(
-      "/support/conversations",
+      `/support/conversations${guestQuery()}`,
     ),
 
   getConversation: (id: string) =>
     request<{ conversation: unknown; messages: unknown[] }>(
-      `/support/conversations/${id}`,
+      `/support/conversations/${id}${guestQuery()}`,
     ),
 
   sendSupportMessage: (id: string, input: { body: string }) =>
     request<{ message: unknown }>(`/support/conversations/${id}/messages`, {
       method: "POST",
-      body: JSON.stringify(input),
+      body: JSON.stringify({ ...input, ...guestBody() }),
     }),
 
   closeConversation: (id: string) =>
     request<{ conversation: unknown }>(
       `/support/conversations/${id}/close`,
-      { method: "POST", body: JSON.stringify({}) },
+      { method: "POST", body: JSON.stringify(guestBody()) },
     ),
 
   uploadAuth: (purpose: "product" | "deposit-proof") =>

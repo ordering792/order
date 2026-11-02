@@ -1,12 +1,36 @@
+const bcrypt = require("bcryptjs");
 const { z } = require("zod");
 const mongoose = require("mongoose");
 const User = require("../models/User");
 const Product = require("../models/Product");
 const Transaction = require("../models/Transaction");
 const OrderPlan = require("../models/OrderPlan");
+const WalletLedger = require("../models/WalletLedger");
 const asyncHandler = require("../utils/asyncHandler");
 const { escapeRegExp } = require("../utils/regex");
+const { normalizePassword } = require("../utils/phone");
+const { deviceInfo } = require("../utils/deviceInfo");
+const { toCents, fromCents, decimal } = require("../utils/money");
+const {
+  INVALID_WALLET_ADDRESS_MESSAGE,
+  normalizeWalletAddress,
+  isTronAddress,
+} = require("../utils/walletAddress");
+const { WALLET_NOTES } = require("../constants/walletNotes");
+const { emitToAdmins, emitToUser } = require("../socket");
 const { ownerUserIds } = require("../services/ownershipService");
+const { serializePlan } = require("../services/orderPlanService");
+const {
+  hasPendingWithdrawal,
+  PENDING_WITHDRAWAL_MESSAGE,
+} = require("../services/walletGuard");
+
+// Card grid — page တစ်ခုကို card ၂၄ ခု default (desktop 4 ပိုင်း x 6 rows)။
+const orderBoardSchema = z.object({
+  search: z.string().max(100).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(200).default(24),
+});
 
 const listUsersSchema = z.object({
   search: z.string().max(100).optional(),
@@ -22,10 +46,28 @@ const updateUserSchema = z
     status: z.enum(["online", "offline", "burned"]).optional(),
     cryptoAddress: z.string().max(200).nullish(),
     cryptoQrUrl: z.string().max(2000).nullish(),
+    adminNote: z.string().trim().max(500).nullish(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: "No updates provided",
   });
+
+const resetPasswordSchema = z.object({
+  password: z.string().min(6).max(100),
+});
+
+// User တစ်ယောက်ရဲ့ payout (TRC20) address ကို admin က လက်ဖြင့် ပြောင်းတာ။
+// format စစ်တာက util မှာ — user ကိုယ်တိုင်ပြောင်းတဲ့ endpoint နဲ့ တစ်ပြေးညီ။
+const walletAddressSchema = z.object({
+  walletAddress: z.string().min(10).max(100),
+});
+
+// toCents() က sign မပါတဲ့ number string ပဲ ယူတယ် — direction ကို type နဲ့ ခွဲထား။
+const adjustBalanceSchema = z.object({
+  type: z.enum(["credit", "debit"]),
+  amount: z.string().regex(/^\d+(\.\d{1,2})?$/, "Invalid monetary amount").max(14),
+  reason: z.string().max(200).optional(),
+});
 
 exports.listUsers = asyncHandler(async (req, res) => {
   const parsed = listUsersSchema.safeParse(req.query);
@@ -56,12 +98,17 @@ exports.listUsers = asyncHandler(async (req, res) => {
     ];
   }
 
+  // adminNote က admin ဆီပဲ သွားရမယ် — owner က ကိုယ့် downline ကို ဖတ်တဲ့အခါ
+  // field ကို လုံးဝ မတောင်းဘူး (schema မှာ select: false ဖြစ်နေပြီးသား)။
+  const selectedFields =
+    "name phone invitationCode role status balance walletAddress ownerId language cryptoAddress cryptoQrUrl createdAt ipAddress lastLoginAt lastUserAgent" +
+    (req.user.role === "admin" ? " +adminNote" : "");
+
   const [users, total] = await Promise.all([
     User.find(filter)
-      .select(
-        "name phone invitationCode role status balance walletAddress ownerId language cryptoAddress cryptoQrUrl createdAt",
-      )
-      .sort({ createdAt: -1 })
+      .select(selectedFields)
+      // lastLoginAt မရှိသူ (ဘယ်တော့မှ မဝင်ခဲ့သူ) က BSON null အဖြစ် အောက်ဆုံးရောက်မယ်။
+      .sort({ lastLoginAt: -1, createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
       .lean(),
@@ -69,7 +116,72 @@ exports.listUsers = asyncHandler(async (req, res) => {
   ]);
 
   res.json({
-    users,
+    users: users.map((user) => ({
+      ...user,
+      lastDevice: deviceInfo(user.lastUserAgent),
+    })),
+    total,
+    page,
+    pages: Math.max(1, Math.ceil(total / limit)),
+  });
+});
+
+// Order plan board — user တစ်ယောက်ကို card တစ်ခု။ active plan (draft/generated)
+// တစ်ခုတည်း join တယ်၊ completed round တွေ card ပေါ် မပေါ်ဘူး (row မဖျက်ဘူး)။
+exports.orderBoard = asyncHandler(async (req, res) => {
+  const parsed = orderBoardSchema.safeParse(req.query);
+
+  if (!parsed.success) {
+    return res.status(400).json({
+      message: "Validation failed",
+      errors: parsed.error.issues,
+    });
+  }
+
+  const { search, page, limit } = parsed.data;
+  const filter = { role: "user" };
+
+  // Owner က ကိုယ့် downline ကိုပဲ မြင်တယ် — role: "user" က အမြဲ သက်ဆိုင်တယ်။
+  if (req.user.role === "owner") {
+    filter.ownerId = req.user._id;
+  }
+
+  if (search) {
+    const rx = new RegExp(escapeRegExp(search), "i");
+    filter.$and = [
+      ...(filter.$and ?? []),
+      { $or: [{ name: rx }, { phone: rx }, { invitationCode: rx }] },
+    ];
+  }
+
+  const [users, total] = await Promise.all([
+    User.find(filter)
+      .select("name phone invitationCode balance")
+      .sort({ lastLoginAt: -1, createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean(),
+    User.countDocuments(filter),
+  ]);
+
+  const plans =
+    users.length > 0
+      ? await OrderPlan.find({
+          userId: { $in: users.map((user) => user._id) },
+          status: { $in: ["draft", "generated"] },
+        }).lean()
+      : [];
+
+  const activePlanByUser = new Map(
+    plans.map((plan) => [String(plan.userId), plan]),
+  );
+
+  res.json({
+    rows: users.map((user) => {
+      const plan = activePlanByUser.get(String(user._id));
+
+      return { user, plan: plan ? serializePlan(plan) : null };
+    }),
     total,
     page,
     pages: Math.max(1, Math.ceil(total / limit)),
@@ -136,6 +248,9 @@ exports.updateUser = asyncHandler(async (req, res) => {
   if (parsed.data.cryptoQrUrl !== undefined) {
     user.cryptoQrUrl = parsed.data.cryptoQrUrl;
   }
+  if (parsed.data.adminNote !== undefined) {
+    user.adminNote = parsed.data.adminNote;
+  }
 
   await user.save();
 
@@ -152,8 +267,206 @@ exports.updateUser = asyncHandler(async (req, res) => {
       ownerId: user.ownerId,
       language: user.language,
       createdAt: user.createdAt,
+      adminNote: user.adminNote,
     },
   });
+});
+
+// User/owner ရဲ့ withdraw လမ်းပို့ address ကို admin က လက်ဖြင့် ပြင်တာ
+// (phone နဲ့ရိုက်ထည့်မှုမှား, address ပြောင်းခိုင်းမှု)။ Admin အချင်းချင်း
+// ပြင်လို့မရ — panel account address ပျက်ရင် payout အားလုံး ရှုပ်ထွေးသွားမယ်။
+exports.updateUserWalletAddress = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  if (!mongoose.isValidObjectId(id)) {
+    return res.status(400).json({ message: "Invalid user ID" });
+  }
+
+  const parsed = walletAddressSchema.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res.status(400).json({
+      message: "Validation failed",
+      errors: parsed.error.issues,
+    });
+  }
+
+  const walletAddress = normalizeWalletAddress(parsed.data.walletAddress);
+
+  if (!isTronAddress(walletAddress)) {
+    return res.status(400).json({ message: INVALID_WALLET_ADDRESS_MESSAGE });
+  }
+
+  const user = await User.findById(id);
+
+  if (!user) {
+    return res.status(404).json({ message: "User not found" });
+  }
+
+  if (user.role === "admin") {
+    return res.status(403).json({
+      message: "Admin wallet addresses must be changed from the admin's own account",
+    });
+  }
+
+  // Pending withdrawal ထဲက address ကို အခုပြောင်းရင် admin approve လုပ်တဲ့အခါ
+  // နောက် address ကို ပို့မိမယ် — ဒါကြောင့် မှုတစ်ခုပြီးမှ ပြောင်းခွင့်ပေးတယ်။
+  if (await hasPendingWithdrawal(user._id)) {
+    return res.status(409).json({ message: PENDING_WITHDRAWAL_MESSAGE });
+  }
+
+  user.walletAddress = walletAddress;
+  await user.save();
+
+  console.log(
+    `[audit] admin=${req.user._id} updated wallet address for user=${user._id}`,
+  );
+
+  res.json({ message: "Wallet address updated", walletAddress });
+});
+
+// User က password မေ့ပြီး admin ဆီ တောင်းတဲ့အခါ — အဟောင်း password ကို
+// မမေးဘူး (bcrypt hash ဖြစ်လို့ ဖော်လို့မရ)။ Admin authority ကို adminOnly middleware
+// က သက်သေပြပြီး tokenVersion တက်သွားလို့ device အားလုံး 401 နဲ့ ထွက်သွားမယ်။
+exports.resetUserPassword = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  if (!mongoose.isValidObjectId(id)) {
+    return res.status(400).json({ message: "Invalid user ID" });
+  }
+
+  const parsed = resetPasswordSchema.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res.status(400).json({
+      message: "Validation failed",
+      errors: parsed.error.issues,
+    });
+  }
+
+  // register/login နှစ်ခုလုံး normalizePassword သုံးထားလို့ ဒီမှာ မလုပ်ရင်
+  // trim ပြီး တိုသွားတဲ့ password နဲ့ user က login မရတဲ့ lockout ဖြစ်တယ်။
+  const password = normalizePassword(parsed.data.password);
+
+  if (password.length < 6) {
+    return res.status(400).json({
+      message: "Password must be at least 6 characters",
+    });
+  }
+
+  const user = await User.findById(id);
+
+  if (!user) {
+    return res.status(404).json({ message: "User not found" });
+  }
+
+  // Admin account တွေကို admin အချင်းချင်း reset မလုပ်နိုင် — မှားယွင်းပဋိပက္ခ
+  // ဖြစ်ရင် panel ကို အားလုံး ပိတ်သွားနိုင်လို့ self change လမ်းပဲ ထားတယ်။
+  if (user.role === "admin") {
+    return res.status(403).json({
+      message: "Admin passwords must be changed from the admin's own account",
+    });
+  }
+
+  user.passwordHash = await bcrypt.hash(password, 10);
+  user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+  await user.save();
+
+  console.log(
+    `[audit] admin=${req.user._id} reset password for user=${user._id}`,
+  );
+
+  res.json({ message: "Password updated" });
+});
+
+// ငွေအမှားအယွင်း (deposit မတင်ရ, withdraw ပြန်ပို့ရ) တွေအတွက် admin လက်ဖြင့် ညှိခြင်း။
+// Balance + ledger ကို transaction တစ်ခုတည်းမှာ ရေးတယ် — ledger မပါတဲ့
+// balance ပြောင်းလဲမှု မဖြစ်အောင်။
+exports.adjustUserBalance = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  if (!mongoose.isValidObjectId(id)) {
+    return res.status(400).json({ message: "Invalid user ID" });
+  }
+
+  const parsed = adjustBalanceSchema.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res.status(400).json({
+      message: "Validation failed",
+      errors: parsed.error.issues,
+    });
+  }
+
+  const { type, reason } = parsed.data;
+  const deltaCents = toCents(parsed.data.amount);
+
+  if (deltaCents === 0n) {
+    return res.status(400).json({ message: "Amount must be greater than zero" });
+  }
+
+  const session = await mongoose.startSession();
+
+  try {
+    let adjusted;
+
+    await session.withTransaction(async () => {
+      const user = await User.findOne({
+        _id: id,
+        status: { $ne: "burned" },
+      }).session(session);
+
+      if (!user) {
+        const err = new Error("User unavailable");
+        err.status = 409;
+        throw err;
+      }
+
+      const before = toCents(user.balance.toString());
+      const after = type === "credit" ? before + deltaCents : before - deltaCents;
+
+      if (after < 0n) {
+        const err = new Error("Insufficient balance");
+        err.status = 409;
+        throw err;
+      }
+
+      user.balance = decimal(after);
+      await user.save({ session });
+
+      await WalletLedger.create(
+        [
+          {
+            userId: user._id,
+            type,
+            amount: decimal(deltaCents),
+            balance: decimal(after),
+            reference: String(req.user._id),
+            note: reason
+              ? `${WALLET_NOTES.ADMIN_ADJUST}: ${reason}`
+              : WALLET_NOTES.ADMIN_ADJUST,
+          },
+        ],
+        { session },
+      );
+
+      adjusted = { userId: String(user._id), after };
+    });
+
+    emitToAdmins("balance:updated", {
+      userId: adjusted.userId,
+      balance: fromCents(adjusted.after),
+      reason: "admin_adjust",
+    });
+    emitToUser(adjusted.userId, "balance:updated", {
+      balance: fromCents(adjusted.after),
+      reason: "admin_adjust",
+    });
+
+    res.json({ balance: fromCents(adjusted.after) });
+  } finally {
+    await session.endSession();
+  }
 });
 
 const STATS_CACHE_TTL_MS = 15000;

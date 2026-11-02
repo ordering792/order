@@ -88,6 +88,22 @@ describe("admin api endpoints", () => {
       expect(body.role).toBe("owner");
       expect(body.status).toBe("online");
     });
+
+    it("adminUpdateUserWalletAddress PUTs the address", async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({ message: "Wallet address updated", walletAddress: "Tabc" })
+      );
+
+      await api.adminUpdateUserWalletAddress("u1", "Tabc");
+
+      const call = mockFetch.mock.calls[0];
+      expect(call[0]).toBe(
+        "http://localhost:5000/api/admin/users/u1/wallet-address"
+      );
+      const init = call[1] as RequestInit;
+      expect(init.method).toBe("PUT");
+      expect(JSON.parse(init.body as string)).toEqual({ walletAddress: "Tabc" });
+    });
   });
 
   describe("admin transactions", () => {
@@ -221,6 +237,82 @@ describe("admin api endpoints", () => {
       );
       expect(body.depositTransactionId).toBeUndefined();
     });
+
+    it("adminOrderBoard builds the card query", async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({ rows: [], total: 0, page: 1, pages: 1 })
+      );
+
+      await api.adminOrderBoard({ search: "0912", page: 3, limit: 24 });
+
+      const url = mockFetch.mock.calls[0][0] as string;
+      expect(url).toContain("/admin/order-board?");
+      expect(url).toContain("search=0912");
+      expect(url).toContain("page=3");
+      expect(url).toContain("limit=24");
+    });
+
+    it("adminOrderBoard omits an empty search", async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({ rows: [], total: 0, page: 1, pages: 1 })
+      );
+
+      await api.adminOrderBoard({ page: 1, limit: 24 });
+
+      expect(mockFetch.mock.calls[0][0] as string).not.toContain("search=");
+    });
+
+    it("adminUpdatePlan PATCHes the draft count and tags", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ plan: {} }));
+
+      await api.adminUpdatePlan("plan1", {
+        totalOrders: 45,
+        luckyPositions: [
+          {
+            orderNumber: 5,
+            productId: null,
+            requiredDeposit: "20.00",
+            luckyCommission: "1.50",
+          },
+        ],
+      });
+
+      expect(mockFetch.mock.calls[0][0]).toContain("/orders/plans/plan1");
+      expect((mockFetch.mock.calls[0][1] as RequestInit).method).toBe("PATCH");
+
+      const body = JSON.parse(
+        (mockFetch.mock.calls[0][1] as RequestInit).body as string
+      );
+      expect(body.totalOrders).toBe(45);
+      expect(body.luckyPositions[0].productId).toBeNull();
+      expect(body.luckyPositions[0].requiredDeposit).toBe("20.00");
+    });
+
+    it("adminAddLuckyPosition POSTs the mid-round tag", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ plan: {} }));
+
+      await api.adminAddLuckyPosition("plan1", {
+        orderNumber: 7,
+        productId: null,
+        requiredDeposit: "15.00",
+        luckyCommission: "2.00",
+      });
+
+      expect(mockFetch.mock.calls[0][0]).toContain(
+        "/orders/plans/plan1/lucky-positions"
+      );
+      expect((mockFetch.mock.calls[0][1] as RequestInit).method).toBe("POST");
+
+      const body = JSON.parse(
+        (mockFetch.mock.calls[0][1] as RequestInit).body as string
+      );
+      expect(body).toEqual({
+        orderNumber: 7,
+        productId: null,
+        requiredDeposit: "15.00",
+        luckyCommission: "2.00",
+      });
+    });
   });
 
   describe("upload auth", () => {
@@ -276,6 +368,58 @@ describe("admin api endpoints", () => {
       );
       expect(body.name).toBe("Owner One");
       expect(body.phone).toBe("09111");
+    });
+  });
+
+  describe("admin support", () => {
+    it("adminListConversations sends the search term", async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({ conversations: [], total: 0 })
+      );
+
+      await api.adminListConversations({ search: "0912345678" });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "http://localhost:5000/api/support/admin/conversations?search=0912345678",
+        expect.anything()
+      );
+    });
+
+    it("adminListConversations omits the query when unfiltered", async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({ conversations: [], total: 0 })
+      );
+
+      await api.adminListConversations();
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "http://localhost:5000/api/support/admin/conversations",
+        expect.anything()
+      );
+    });
+
+    it("adminListConversations sends the participant tab", async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({ conversations: [], total: 0 })
+      );
+
+      await api.adminListConversations({ participant: "guests" });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "http://localhost:5000/api/support/admin/conversations?participant=guests",
+        expect.anything()
+      );
+    });
+
+    it("adminMarkConversationRead POSTs to the read endpoint", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ conversation: {} }));
+
+      await api.adminMarkConversationRead("65f0000000000000000000c1");
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "http://localhost:5000/api/support/admin/conversations/65f0000000000000000000c1/read",
+        expect.objectContaining({ method: "POST" })
+      );
     });
   });
 });
