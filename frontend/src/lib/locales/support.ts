@@ -120,4 +120,19 @@ export const supportDict: Dict = {
     "support.close": "关闭",
     "support.guestNotice": "您正在以访客身份聊天。登录后可将此会话保存到您的账户。",
   },
+  ur: {
+    "support.title": "کسٹمر سپورٹ",
+    "support.loading": "لوڈ ہو رہا ہے...",
+    "support.needMessage": "براہ کرم پیغام لکھیں یا تصویر منسلک کریں!",
+    "support.notReady": "سپورٹ ابھی تیار نہیں ہے۔ براہ کرم انتظار کریں۔",
+    "support.sendFailed": "پیغام بھیجا نہیں جا سکا۔",
+    "support.loadFailed": "گفتگو لوڈ نہیں ہو سکی۔",
+    "support.inputPlaceholder": "اپنا پیغام یہاں لکھیں...",
+    "support.subject": "جنرل سپورٹ",
+    "support.you": "آپ",
+    "support.send": "بھیجیں",
+    "support.close": "بند کریں",
+    "support.guestNotice":
+      "آپ بطور مہمان گفتگو کر رہے ہیں۔ یہ گفتگو اپنے اکاؤنٹ میں محفوظ رکھنے کے لیے سائن ان کریں۔",
+  },
 };

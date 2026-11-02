@@ -57,4 +57,11 @@ export const sharedDict: Dict = {
     "nav.profile": "我的",
     "langModal.title": "选择语言 / 地区",
   },
+  ur: {
+    "nav.home": "ہوم",
+    "nav.orders": "آرڈرز",
+    "nav.support": "سپورٹ",
+    "nav.profile": "پروفائل",
+    "langModal.title": "زبان / علاقہ منتخب کریں",
+  },
 };

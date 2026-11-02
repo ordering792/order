@@ -12,6 +12,7 @@ const fallbackLanguages = [
   { name: "Español (Spain)", code: "es" },
   { name: "Português (Brazil)", code: "br" },
   { name: "العربية (Arabic)", code: "sa" },
+  { name: "اردو (Pakistan)", code: "pk" },
   { name: "日本語 (Japan)", code: "jp" },
   { name: "ไทย (Thailand)", code: "th" },
   { name: "한국어 (Korea)", code: "kr" },

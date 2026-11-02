@@ -19,13 +19,14 @@ import {
   type LangSelection,
 } from "./language";
 
-export type Lang = "en" | "es" | "pt" | "ar" | "ja" | "th" | "ko" | "zh";
+export type Lang = "en" | "es" | "pt" | "ar" | "ur" | "ja" | "th" | "ko" | "zh";
 
 export const LANGS: readonly Lang[] = [
   "en",
   "es",
   "pt",
   "ar",
+  "ur",
   "ja",
   "th",
   "ko",
@@ -39,6 +40,7 @@ const LANG_NAMES: Record<Lang, string> = {
   es: "Español (Spain)",
   pt: "Português (Brazil)",
   ar: "العربية",
+  ur: "اردو (Pakistan)",
   ja: "日本語",
   th: "ไทย (Thailand)",
   ko: "한국어 (Korea)",
@@ -87,8 +89,9 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     document.documentElement.lang = lang;
-    // RTL (Arabic) ကို directional class တွေ စစ်ဆေးပြီးမှ ဖွင့်မယ် —
-    // html ကို rtl လုပ်ပြီး container တွေက ltr ဆိုရင် layout က ပြိုတယ်။
+    // Arabic/Urdu ကို ရွေးလို့ရပေမယ့် layout အကုန် LTR ပဲ သုံးမယ် —
+    // RTL မဖွင့်ဖို့ ဆုံးဖြတ်ထားတယ်။ html ကို rtl လုပ်ပြီး container တွေက
+    // ltr ဆိုရင် layout က ပြိုတယ်။
     document.documentElement.dir = "ltr";
   }, [lang]);
 

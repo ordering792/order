@@ -16,6 +16,7 @@ const SHARED_FILES = [
   "src/lib/locales/auth.ts",
   "src/lib/locales/shared.ts",
   "src/lib/__tests__/api-client.test.ts",
+  "src/lib/__tests__/language.test.ts",
   "src/lib/__tests__/locale-parity.test.ts",
   "src/lib/__tests__/money.test.ts",
   "src/lib/__tests__/shared-files.test.ts",
