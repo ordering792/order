@@ -26,7 +26,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const showChrome = !CHROMELESS_PATHS.has(pathname);
 
   return (
-    <div className="relative w-full min-h-screen flex flex-col overflow-hidden max-w-[500px] bg-white shadow-2xl">
+    <div dir="ltr" className="relative w-full min-h-screen flex flex-col overflow-hidden max-w-[500px] bg-white shadow-2xl">
       {showChrome && <Header />}
       <div
         className={`flex-1 overflow-y-auto w-full relative custom-scrollbar ${showChrome ? "pt-[60px] pb-20" : "pt-0 pb-0"}`}

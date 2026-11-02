@@ -31,6 +31,7 @@ export default function SupportPage() {
   const [inputText, setInputText] = useState("");
   const [isLangModalOpen, setIsLangModalOpen] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState(getStoredLang);
+  const [displayName, setDisplayName] = useState("");
   const { toast, showToast } = useToast(2000);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -39,6 +40,7 @@ export default function SupportPage() {
   // Login လုပ်ထားသူရဲ့ conversation ကို user state ပြောင်းတိုင်း ပြန်ဖတ်တယ်။
   // Login မလုပ်ရင် api layer က guestId နဲ့ တင်ပို့လို့ guest အတိုင်း ဆက်သုံးလို့ရ။
   useEffect(() => {
+    setDisplayName(user?.name ?? "");
     setLoading(true);
     api.myConversations()
       .then((res) => {
@@ -158,7 +160,7 @@ export default function SupportPage() {
 
   return (
     <div className="bg-[#1e293b] flex justify-center items-center min-h-screen m-0 p-0 overflow-hidden">
-      <div className="w-full max-w-[500px] h-screen bg-white shadow-2xl flex flex-col justify-between relative overflow-hidden">
+      <div dir="ltr" className="w-full max-w-[500px] h-screen bg-white shadow-2xl flex flex-col justify-between relative overflow-hidden">
 
         <Toast toast={toast} compact />
 
@@ -169,6 +171,13 @@ export default function SupportPage() {
             </div>
             <span className="font-semibold text-gray-800 text-base">{t("support.title")}</span>
           </div>
+
+          {displayName && (
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-gray-600">{t("support.you")}</span>
+              <span className="font-bold text-gray-800">{displayName}</span>
+            </div>
+          )}
 
           <button
             onClick={() => setIsLangModalOpen(true)}
@@ -195,11 +204,15 @@ export default function SupportPage() {
 
                 <div className={`p-3.5 rounded-2xl shadow-sm max-w-[75%] text-xs leading-relaxed ${
                   msg.senderType === 'customer'
-                    ? 'bg-[#ff6600] text-white rounded-tr-sm'
+                    ? 'bg-[#ff6600] text-white rounded-tr-sm ml-auto'
                     : 'bg-white border border-gray-100 text-gray-700 rounded-tl-sm'
                 }`}>
                   {msg.body && <p>{msg.body}</p>}
-                  <span className={`text-[9px] mt-1 block ${msg.senderType === 'customer' ? 'text-orange-100' : 'text-gray-400'}`}>
+                  <span className={`text-[9px] mt-1 block ${
+                    msg.senderType === 'customer'
+                      ? 'text-orange-100'
+                      : 'text-gray-400'
+                  }`}>
                     {new Date(msg.createdAt).toLocaleTimeString()}
                   </span>
                 </div>

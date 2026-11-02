@@ -11,11 +11,10 @@ import {
   Lock,
   Eye,
   EyeOff,
-  ChevronDown,
-  ArrowLeft,
+  Headphones,
 } from "lucide-react";
-import CountryModal from "../components/CountryModal";
 import CountryLanguageModal from "../components/CountryLanguageModal";
+import CustomerServiceChat from "../components/CustomerServiceChat";
 import { useAuth } from "../../lib/auth";
 import { ApiError } from "../../lib/api";
 import { useT } from "../../lib/i18n";
@@ -25,13 +24,8 @@ export default function LoginPage() {
   const { login } = useAuth();
   const t = useT();
   const [showPassword, setShowPassword] = useState(false);
-  const [isCountryModalOpen, setIsCountryModalOpen] = useState(false);
   const [isLangModalOpen, setIsLangModalOpen] = useState(false);
-  const [selectedCountry, setSelectedCountry] = useState({
-    name: "United States",
-    code: "+1",
-    flag: "us",
-  });
+  const [isCustomerServiceOpen, setIsCustomerServiceOpen] = useState(false);
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -43,7 +37,7 @@ export default function LoginPage() {
     setIsLoading(true);
     try {
       await login(phone.trim(), password.trim());
-      router.push("/");
+      router.push("/license");
     } catch (err) {
       const message =
         err instanceof ApiError ? err.message : t("auth.login.failed");
@@ -55,7 +49,7 @@ export default function LoginPage() {
 
   return (
     <main className="min-h-screen bg-[#f2f3f6] flex justify-center">
-      <div className="relative flex min-h-screen w-full max-w-[500px] flex-col overflow-hidden bg-white shadow-[0_0_35px_rgba(0,0,0,0.08)]">
+      <div dir="ltr" className="relative flex min-h-screen w-full max-w-[500px] flex-col overflow-hidden bg-white shadow-[0_0_35px_rgba(0,0,0,0.08)]">
 
         <section className="relative h-[250px] w-full shrink-0">
           <Image
@@ -69,9 +63,12 @@ export default function LoginPage() {
           <div className="absolute inset-0 bg-black/20" />
 
           <header className="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-4 pt-4">
-            <Link href="/login" className="flex h-10 w-10 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-sm transition hover:bg-black/40">
-              <ArrowLeft size={20} />
-            </Link>
+            <button
+              onClick={() => setIsCustomerServiceOpen(true)}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-sm transition hover:bg-black/40"
+            >
+              <Headphones size={20} />
+            </button>
             <h1 className="absolute left-1/2 -translate-x-1/2 text-[18px] font-bold tracking-wider text-white">
               Rakuten
             </h1>
@@ -95,15 +92,6 @@ export default function LoginPage() {
 
             <div className="flex items-center border-b border-gray-200 py-3 px-1 focus-within:border-[#ff6600]">
               <Smartphone className="mr-3 shrink-0 text-[#ff6600]" size={24} strokeWidth={2} />
-              <button
-                type="button"
-                onClick={() => setIsCountryModalOpen(true)}
-                className="flex shrink-0 items-center border-r border-gray-200 pr-3 mr-3 cursor-pointer select-none"
-              >
-                <span className={`fi fi-${selectedCountry.flag} w-6 h-4 object-cover rounded-sm mr-1.5 shadow-sm`}></span>
-                <span className="text-sm font-bold text-gray-700">{selectedCountry.code}</span>
-                <ChevronDown size={14} className="ml-1 text-gray-400" />
-              </button>
               <input
                 type="tel"
                 placeholder={t("auth.common.phone")}
@@ -149,10 +137,9 @@ export default function LoginPage() {
 
       </div>
 
-      <CountryModal
-        isOpen={isCountryModalOpen}
-        onClose={() => setIsCountryModalOpen(false)}
-        onSelect={(country) => setSelectedCountry(country)}
+      <CustomerServiceChat
+        isOpen={isCustomerServiceOpen}
+        onClose={() => setIsCustomerServiceOpen(false)}
       />
       <CountryLanguageModal
         isOpen={isLangModalOpen}

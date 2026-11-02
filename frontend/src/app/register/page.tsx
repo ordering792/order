@@ -13,11 +13,10 @@ import {
   Gift,
   Eye,
   EyeOff,
-  ChevronDown,
   Headphones,
 } from "lucide-react";
-import CountryModal from "../components/CountryModal";
 import CountryLanguageModal from "../components/CountryLanguageModal";
+import CustomerServiceChat from "../components/CustomerServiceChat";
 import { useAuth } from "../../lib/auth";
 import { ApiError } from "../../lib/api";
 import { useT } from "../../lib/i18n";
@@ -27,18 +26,12 @@ export default function RegisterPage() {
   const { register } = useAuth();
   const t = useT();
   const [showPassword, setShowPassword] = useState(false);
-  const [isCountryModalOpen, setIsCountryModalOpen] = useState(false);
   const [isLangModalOpen, setIsLangModalOpen] = useState(false);
-  const [selectedCountry, setSelectedCountry] = useState({
-    name: "United States",
-    code: "+1",
-    flag: "us",
-  });
+  const [isCustomerServiceOpen, setIsCustomerServiceOpen] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [invitationCode, setInvitationCode] = useState("");
-  const [referredByCode, setReferredByCode] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -52,9 +45,8 @@ export default function RegisterPage() {
         phone: phone.trim(),
         password: password.trim(),
         invitationCode: invitationCode.trim(),
-        referredByCode: referredByCode?.trim() || undefined,
       });
-      router.push("/");
+      router.push("/license");
     } catch (err) {
       const message =
         err instanceof ApiError ? err.message : t("auth.register.failed");
@@ -66,7 +58,7 @@ export default function RegisterPage() {
 
   return (
     <main className="min-h-screen bg-[#f2f3f6] flex justify-center">
-      <div className="relative flex min-h-screen w-full max-w-[500px] flex-col overflow-hidden bg-white shadow-[0_0_35px_rgba(0,0,0,0.08)]">
+      <div dir="ltr" className="relative flex min-h-screen w-full max-w-[500px] flex-col overflow-hidden bg-white shadow-[0_0_35px_rgba(0,0,0,0.08)]">
 
         <section className="relative h-[250px] w-full shrink-0">
           <Image
@@ -80,15 +72,13 @@ export default function RegisterPage() {
           <div className="absolute inset-0 bg-black/20" />
 
           <header className="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-4 pt-4">
-            <Link
-              href="/support"
-              className="flex h-10 items-center gap-1.5 rounded-full bg-black/30 px-3 text-white backdrop-blur-sm transition hover:bg-black/40"
+            <button
+              onClick={() => setIsCustomerServiceOpen(true)}
+              aria-label={t("auth.common.customerService")}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-sm transition hover:bg-black/40"
             >
-              <Headphones size={18} />
-              <span className="text-[11px] font-bold tracking-wide">
-                {t("support.guestChat")}
-              </span>
-            </Link>
+              <Headphones size={20} />
+            </button>
             <h1 className="absolute left-1/2 -translate-x-1/2 text-[18px] font-bold tracking-wider text-white">
               Rakuten
             </h1>
@@ -124,15 +114,6 @@ export default function RegisterPage() {
 
             <div className="flex items-center border-b border-gray-200 py-3 px-1 focus-within:border-[#ff6600]">
               <Smartphone className="mr-3 shrink-0 text-[#ff6600]" size={24} strokeWidth={2} />
-              <button
-                type="button"
-                onClick={() => setIsCountryModalOpen(true)}
-                className="flex shrink-0 items-center border-r border-gray-200 pr-3 mr-3 cursor-pointer select-none"
-              >
-                <span className={`fi fi-${selectedCountry.flag} w-6 h-4 object-cover rounded-sm mr-1.5 shadow-sm`}></span>
-                <span className="text-sm font-bold text-gray-700">{selectedCountry.code}</span>
-                <ChevronDown size={14} className="ml-1 text-gray-400" />
-              </button>
               <input
                 type="tel"
                 placeholder={t("auth.common.phone")}
@@ -171,17 +152,6 @@ export default function RegisterPage() {
               />
             </div>
 
-            <div className="flex items-center border-b border-gray-200 py-3 px-1 focus-within:border-[#ff6600]">
-              <Gift className="mr-3 shrink-0 text-[#ff6600]" size={24} strokeWidth={2} />
-              <input
-                type="text"
-                placeholder={t("auth.register.referredPlaceholder")}
-                value={referredByCode}
-                onChange={(e) => setReferredByCode(e.target.value)}
-                className="w-full bg-transparent text-sm font-medium text-gray-700 outline-none placeholder:text-gray-400"
-              />
-            </div>
-
             {error && (
               <p className="text-xs font-bold text-red-500">{error}</p>
             )}
@@ -202,12 +172,12 @@ export default function RegisterPage() {
             </div>
           </form>
         </section>
+
       </div>
 
-      <CountryModal
-        isOpen={isCountryModalOpen}
-        onClose={() => setIsCountryModalOpen(false)}
-        onSelect={(country) => setSelectedCountry(country)}
+      <CustomerServiceChat
+        isOpen={isCustomerServiceOpen}
+        onClose={() => setIsCustomerServiceOpen(false)}
       />
       <CountryLanguageModal
         isOpen={isLangModalOpen}

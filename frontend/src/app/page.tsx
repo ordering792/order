@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Bell, Wallet, CreditCard, Gift, FileText, Globe, Users, Download
 } from "lucide-react";
@@ -29,7 +30,8 @@ const partners = [
 ];
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const router = useRouter();
+  const { user, loading } = useAuth();
   const t = useT();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [profits, setProfits] = useState({
@@ -40,25 +42,40 @@ export default function DashboardPage() {
   });
 
   useEffect(() => {
-    api
-      .profits()
-      .then((res) => {
-        setProfits({
-          total: money(res.profits.total),
-          today: money(res.profits.today),
-          yesterday: money(res.profits.yesterday),
-          team: money(res.profits.team),
-        });
-      })
-      .catch(() => {});
-  }, []);
+    if (loading) return;
+    if (!user) {
+      router.replace("/login");
+    }
+  }, [loading, user, router]);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % bannerImages.length);
-    }, 3000);
-    return () => clearInterval(timer);
-  }, []);
+    if (!loading && user) {
+      api
+        .profits()
+        .then((res) => {
+          setProfits({
+            total: money(res.profits.total),
+            today: money(res.profits.today),
+            yesterday: money(res.profits.yesterday),
+            team: money(res.profits.team),
+          });
+        })
+        .catch(() => {});
+    }
+  }, [loading, user]);
+
+  useEffect(() => {
+    if (!loading && user) {
+      const timer = setInterval(() => {
+        setCurrentSlide((prev) => (prev + 1) % bannerImages.length);
+      }, 3000);
+      return () => clearInterval(timer);
+    }
+  }, [loading, user]);
+
+  if (loading || !user) {
+    return null;
+  }
 
   const balance = moneyNumber(user?.balance);
 
