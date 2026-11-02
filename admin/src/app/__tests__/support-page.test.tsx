@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { api } from "@/lib/api";
 import { LanguageProvider } from "@/lib/i18n";
@@ -19,7 +19,23 @@ jest.mock("@/lib/api", () => {
   };
 });
 
-jest.mock("@/lib/socket", () => ({ getSocket: () => null }));
+// Socket ကို fake လုပ်တယ် — getSocket() က render အပြီးမှာ ခေါ်လို့
+// module-scope const တွေ safety ရှိတယ် (factory body မှာ မထိဘူး)။
+const mockSocketListeners: Record<string, (payload?: unknown) => void> = {};
+const mockSocketEmit = jest.fn();
+
+jest.mock("@/lib/socket", () => ({
+  getSocket: () => ({
+    connected: true,
+    on: (event: string, fn: (payload?: unknown) => void) => {
+      mockSocketListeners[event] = fn;
+    },
+    off: (event: string) => {
+      delete mockSocketListeners[event];
+    },
+    emit: mockSocketEmit,
+  }),
+}));
 
 type Conversation = {
   _id: string;
@@ -81,6 +97,10 @@ beforeEach(() => {
     .mockReset()
     .mockResolvedValue({ conversation: USER_CONV });
   (api.adminListConversations as jest.Mock).mockClear();
+  mockSocketEmit.mockClear();
+  for (const event of Object.keys(mockSocketListeners)) {
+    delete mockSocketListeners[event];
+  }
 });
 
 describe("Admin support page", () => {
@@ -209,6 +229,95 @@ describe("Admin support page", () => {
       expect(await screen.findByTestId("support-tab-all")).toHaveTextContent("2");
       expect(screen.getByTestId("support-tab-users")).toHaveTextContent("1");
       expect(screen.getByTestId("support-tab-guests")).toHaveTextContent("1");
+    });
+  });
+
+  describe("live chat screen", () => {
+    async function openUserConversation() {
+      const user = userEvent.setup();
+      await renderPage();
+      await user.click(await screen.findByText("Ko Ko"));
+      await screen.findByTestId("support-header");
+    }
+
+    function pushMessage(payload: unknown) {
+      act(() => {
+        mockSocketListeners["message:new"](payload);
+      });
+    }
+
+    it("joins the conversation room as soon as it is opened", async () => {
+      await openUserConversation();
+
+      expect(mockSocketEmit).toHaveBeenCalledWith(
+        "conversation:join",
+        USER_CONV._id,
+        expect.any(Function),
+      );
+    });
+
+    it("prints an incoming message without another click", async () => {
+      await openUserConversation();
+
+      pushMessage({
+        conversationId: USER_CONV._id,
+        message: {
+          _id: "m-1",
+          senderType: "customer",
+          body: "my deposit is stuck",
+          createdAt: "2026-11-02T10:00:00.000Z",
+        },
+      });
+
+      expect(await screen.findByText("my deposit is stuck")).toBeInTheDocument();
+
+      // conversation:updated fallback refetch နဲ့ ထပ်ကျရင် တစ်ခုပဲ ပြမယ်။
+      pushMessage({
+        conversationId: USER_CONV._id,
+        message: {
+          _id: "m-1",
+          senderType: "customer",
+          body: "my deposit is stuck",
+          createdAt: "2026-11-02T10:00:00.000Z",
+        },
+      });
+
+      expect(screen.getAllByText("my deposit is stuck")).toHaveLength(1);
+    });
+
+    it("leaves a message from another conversation out of the panel", async () => {
+      await openUserConversation();
+
+      pushMessage({
+        conversationId: GUEST_CONV._id,
+        message: {
+          _id: "m-9",
+          senderType: "customer",
+          body: "other thread",
+          createdAt: "2026-11-02T10:00:00.000Z",
+        },
+      });
+
+      expect(screen.queryByText("other thread")).not.toBeInTheDocument();
+    });
+
+    it("leaves the room when a different conversation is opened", async () => {
+      const user = userEvent.setup();
+      await renderPage();
+
+      await user.click(await screen.findByText("Ko Ko"));
+      await screen.findByTestId("support-header");
+      await user.click(await screen.findByText("Guest · 123e4567…"));
+
+      expect(mockSocketEmit).toHaveBeenCalledWith(
+        "conversation:leave",
+        USER_CONV._id,
+      );
+      expect(mockSocketEmit).toHaveBeenLastCalledWith(
+        "conversation:join",
+        GUEST_CONV._id,
+        expect.any(Function),
+      );
     });
   });
 });

@@ -170,6 +170,51 @@ export default function AdminSupportPage() {
     };
   }, [load, loadMessages, selected]);
 
+  // ဖွင့်ထားတဲ့ conversation ရဲ့ id — effect ကို object identity မဟုတ်ဘဲ
+  // ဒီ string နဲ့ပဲ ပြန်ဆက်မယ် (15s poll က selected object အသစ်ကို ပြန်ထည့်လို့)။
+  const selectedId = selected?._id ?? "";
+
+  // Admin ကိုယ်တိုင် conv:<id> ထဲ ဝင်တယ် — backend က ဖတ်ခွင့်ရှိသူအတွက် room ကို
+  // ခွင့်ပြုထားလို့ message:new ကို user ဘက်လိုပဲ တိုက်ရိုက်ရတယ်၊ conversation
+  // ပြန်နှိပ်စရာ မလိုတော့ဘူး။
+  useEffect(() => {
+    if (!selectedId) return;
+
+    const socket = getSocket();
+    if (!socket) return;
+
+    const join = () => {
+      socket.emit("conversation:join", selectedId, () => {});
+    };
+
+    if (socket.connected) join();
+    socket.on("connect", join);
+
+    const onNewMessage = (payload: {
+      conversationId?: string;
+      message?: AdminMessage;
+    }) => {
+      const incoming = payload?.message;
+      if (!incoming || payload.conversationId !== selectedId) return;
+
+      // conversation:updated fallback ရဲ့ refetch နဲ့ ထပ်ကျရင် duplicate
+      // မပေါ်အောင် id နဲ့ စစ်ထားတယ်။
+      setMessages((prev) =>
+        prev.some((m) => String(m._id) === String(incoming._id))
+          ? prev
+          : [...prev, incoming],
+      );
+    };
+
+    socket.on("message:new", onNewMessage);
+
+    return () => {
+      socket.off("connect", join);
+      socket.off("message:new", onNewMessage);
+      socket.emit("conversation:leave", selectedId);
+    };
+  }, [selectedId]);
+
   // Socket မရတဲ့အခါ (owner role / connection ပြတ်တာ) ကို ဖုံးအုပ်ဖို့
   // tab ပြန်လာတိုင်းနဲ့ ခပ်ကြားခပ်ကြား ပြန်စစ်မယ်။
   useEffect(() => {

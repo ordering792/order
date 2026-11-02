@@ -1,5 +1,6 @@
 const { Server } = require("socket.io");
 const jwt = require("jsonwebtoken");
+const mongoose = require("mongoose");
 
 const onlineUsers = new Map();
 const onlineGuests = new Map();
@@ -86,6 +87,29 @@ function setupSocket(httpServer) {
       return Boolean(conversation);
     };
 
+    // ownership ≠ authorization — စာပို့/typing လုပ်ခွင့်က အပေါ်က card ကိုပဲ သုံးတယ်။
+    // Room ထဲ ဝင်ပြီး message:new လက်ခံခွင့်က ဖတ်ခွင့်သီးသန့်: admin က REST
+    // (adminListConversations / adminGetConversation) မှာ conversation အကုန်
+    // ဖတ်ခွင့်ရှိပြီးသားဖြစ်လို့ ဒီမှာလည်း ဖတ်ခွင့်ရှိတယ်။ owner ကတော့ သူ့
+    // အသုံးပြုသူတွေရဲ့ conversation ပဲ ဖတ်ခွင့်ရှိ — socket ထဲမှာ ဒီ card ကို
+    // ပြန်တည်မဆောက်ဘူး၊ ဒါကြောင့် owner ကို room ထဲ ဝင်ခွင့် မပေးဘူး။
+    const canReadConversation = async (conversationId) => {
+      if (role !== "admin") return ownsConversation(conversationId);
+
+      if (
+        typeof conversationId !== "string" ||
+        !mongoose.isValidObjectId(conversationId)
+      ) {
+        return false;
+      }
+
+      const conversation = await Conversation.findOne({
+        _id: conversationId,
+      }).select("_id");
+
+      return Boolean(conversation);
+    };
+
     // Track online status
     if (userId) {
       onlineUsers.set(String(userId), { socketId: socket.id, role });
@@ -114,9 +138,10 @@ function setupSocket(httpServer) {
       });
     }
 
-    // Join a conversation room — အဲဒီ conversation က သူ့/သူမိသားကပဲ ဖြစ်မှ ဝင်ခွင့်ရမယ် (IDOR ကား)
+    // Join a conversation room — ဖတ်ခွင့်ရှိသူပဲ ဝင်မယ် (customer/guest ကိုယ်ပိုင်
+    // conversation ဒါမှမဟုတ် admin)။ IDOR card က owned path မှာ အတိုင်းပဲ။
     socket.on("conversation:join", async (conversationId, callback) => {
-      if (!(await ownsConversation(conversationId))) {
+      if (!(await canReadConversation(conversationId))) {
         if (callback) callback({ error: "Conversation not found" });
         return;
       }
