@@ -485,6 +485,18 @@ export const api = {
       { method: "POST", body: JSON.stringify({}) },
     ),
 
+  adminReopenConversation: (id: string) =>
+    request<{ conversation: unknown }>(
+      `/support/admin/conversations/${id}/reopen`,
+      { method: "POST", body: JSON.stringify({}) },
+    ),
+
+  adminDeleteConversation: (id: string) =>
+    request<{ message: string }>(`/support/admin/conversations/${id}`, {
+      method: "DELETE",
+      body: JSON.stringify({}),
+    }),
+
   adminOnlineStatus: () =>
     request<{ online: unknown }>("/support/admin/online"),
 

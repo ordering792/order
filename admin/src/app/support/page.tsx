@@ -122,6 +122,20 @@ export default function AdminSupportPage() {
       .catch(() => {});
   }, []);
 
+  // ဖျက်ပြီးသား conversation ကို list ရော ဖွင့်ထားတဲ့ panel ကပါ ချက်ချင်း ဖယ်တယ် —
+  // မဟုတ်ရင် မရှိတော့တဲ့ id ကို ဆက်ခေါ်နေမိမယ်။ ကိုယ်တိုင် ဖျက်တာရော ကျန် admin tab
+  // တစ်ခုက ဖျက်လို့ socket "conversation:deleted" ကျတာရော ဒီနေရာပဲ ဖြတ်တယ်။
+  const dropConversation = useCallback(
+    (conversationId: string) => {
+      setConversations((prev) => prev.filter((c) => c._id !== conversationId));
+      if (selected?._id === conversationId) {
+        setSelected(null);
+        setMessages([]);
+      }
+    },
+    [selected],
+  );
+
   // Search ရိုက်နေတိုင်း request မပို့ဘူး — 350ms နားထောင်ပြီးမှ ပို့တယ်။
   useEffect(() => {
     const timer = setTimeout(() => void load(), search ? 350 : 0);
@@ -169,17 +183,24 @@ export default function AdminSupportPage() {
       }
     };
 
+    const onConversationDeleted = (payload: { conversationId?: string }) => {
+      if (payload?.conversationId) dropConversation(payload.conversationId);
+      refresh();
+    };
+
     socket.on("conversation:new", refresh);
     socket.on("conversation:updated", onConversationUpdated);
+    socket.on("conversation:deleted", onConversationDeleted);
     // Socket နောက်မှ ချိတ်ရင် လွတ်သွားတဲ့ event တွေကို ဖုံးအုပ်ဖို့။
     socket.on("connect", refresh);
 
     return () => {
       socket.off("conversation:new", refresh);
       socket.off("conversation:updated", onConversationUpdated);
+      socket.off("conversation:deleted", onConversationDeleted);
       socket.off("connect", refresh);
     };
-  }, [clearUnread, load, loadMessages, selected]);
+  }, [clearUnread, dropConversation, load, loadMessages, selected]);
 
   // ဖွင့်ထားတဲ့ conversation ရဲ့ id — effect ကို object identity မဟုတ်ဘဲ
   // ဒီ string နဲ့ပဲ ပြန်ဆက်မယ် (15s poll က selected object အသစ်ကို ပြန်ထည့်လို့)။
@@ -271,6 +292,32 @@ export default function AdminSupportPage() {
     setError("");
     try {
       await api.adminCloseConversation(selected._id);
+      await load(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed");
+    }
+  };
+
+  const reopen = async () => {
+    if (!selected) return;
+    setError("");
+    try {
+      await api.adminReopenConversation(selected._id);
+      await load(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed");
+    }
+  };
+
+  const remove = async () => {
+    if (!selected) return;
+    if (!window.confirm(t("admin.deleteConfirm"))) return;
+
+    setError("");
+    try {
+      const conversationId = selected._id;
+      await api.adminDeleteConversation(conversationId);
+      dropConversation(conversationId);
       await load(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed");
@@ -416,12 +463,32 @@ export default function AdminSupportPage() {
                 </p>
                 <p className="text-xs text-slate-500">{meta(selected)}</p>
               </div>
-              <button
-                onClick={close}
-                className="rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50"
-              >
-                {t("admin.action.reject")}
-              </button>
+              <div className="flex shrink-0 gap-2">
+                <button
+                  data-testid="support-delete"
+                  onClick={remove}
+                  className="rounded-lg border border-red-200 px-3 py-1.5 text-[11px] font-semibold text-red-600 transition hover:bg-red-50"
+                >
+                  {t("admin.delete")}
+                </button>
+                {selected.status === "closed" ? (
+                  <button
+                    data-testid="support-reopen"
+                    onClick={reopen}
+                    className="rounded-lg border border-[#ff6600] px-3 py-1.5 text-[11px] font-semibold text-[#ff6600] transition hover:bg-orange-50"
+                  >
+                    {t("admin.action.reopen")}
+                  </button>
+                ) : (
+                  <button
+                    data-testid="support-close"
+                    onClick={close}
+                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50"
+                  >
+                    {t("admin.action.reject")}
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="flex-1 space-y-2 overflow-y-auto p-4">
@@ -448,16 +515,18 @@ export default function AdminSupportPage() {
             <div className="flex gap-2 border-t border-slate-200 p-3">
               <input
                 value={reply}
+                data-testid="support-reply"
+                disabled={selected.status === "closed"}
                 onChange={(e) => setReply(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") send();
                 }}
                 placeholder={t("admin.action.reply")}
-                className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#ff6600]"
+                className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#ff6600] disabled:bg-slate-50 disabled:text-slate-400"
               />
               <button
                 onClick={send}
-                disabled={!reply.trim()}
+                disabled={selected.status === "closed" || !reply.trim()}
                 className="rounded-lg bg-[#ff6600] px-4 py-2 text-xs font-bold text-white transition hover:bg-orange-600 disabled:opacity-50"
               >
                 {t("admin.action.send")}

@@ -490,6 +490,31 @@ exports.adminReopenConversation = asyncHandler(async (req, res) => {
   res.json({ conversation });
 });
 
+// ပြန်လို့မရတဲ့ ဖျက်မှု — Message တွေပါ တစ်ပါတည်း ပျောက်တယ်။ Route မှာ
+// adminOnly တန်းထားလို့ ဒီနေရာမှာ owner branch ထပ်စစ်စရာ မလိုဘူး။
+exports.adminDeleteConversation = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  if (!mongoose.isValidObjectId(id)) {
+    return res.status(400).json({ message: "Invalid conversation ID" });
+  }
+
+  const conversation = await Conversation.findById(id);
+
+  if (!conversation) {
+    return res.status(404).json({ message: "Conversation not found" });
+  }
+
+  await Message.deleteMany({ conversationId: conversation._id });
+  await conversation.deleteOne();
+
+  emitToAdmins("conversation:deleted", {
+    conversationId: String(conversation._id),
+  });
+
+  res.json({ message: "Conversation deleted" });
+});
+
 exports.adminMarkRead = asyncHandler(async (req, res) => {
   const { id } = req.params;
 

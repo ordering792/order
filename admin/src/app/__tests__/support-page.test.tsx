@@ -15,6 +15,8 @@ jest.mock("@/lib/api", () => {
       adminMarkConversationRead: jest.fn(),
       adminSendMessage: jest.fn(),
       adminCloseConversation: jest.fn(),
+      adminReopenConversation: jest.fn(),
+      adminDeleteConversation: jest.fn(),
     },
   };
 });
@@ -96,6 +98,12 @@ beforeEach(() => {
   (api.adminMarkConversationRead as jest.Mock)
     .mockReset()
     .mockResolvedValue({ conversation: USER_CONV });
+  (api.adminReopenConversation as jest.Mock)
+    .mockReset()
+    .mockResolvedValue({ conversation: USER_CONV });
+  (api.adminDeleteConversation as jest.Mock)
+    .mockReset()
+    .mockResolvedValue({ message: "Conversation deleted" });
   (api.adminListConversations as jest.Mock).mockClear();
   mockSocketEmit.mockClear();
   for (const event of Object.keys(mockSocketListeners)) {
@@ -387,6 +395,129 @@ describe("Admin support page", () => {
         "conversation:join",
         GUEST_CONV._id,
         expect.any(Function),
+      );
+    });
+  });
+
+  describe("closing and reopening", () => {
+    const CLOSED_CONV: Conversation = { ...USER_CONV, status: "closed" };
+
+    async function openClosedConversation() {
+      const user = userEvent.setup();
+      list([CLOSED_CONV, GUEST_CONV]);
+      (api.adminGetConversation as jest.Mock).mockResolvedValue({
+        conversation: CLOSED_CONV,
+        messages: [],
+      });
+      await renderPage();
+      await user.click(await screen.findByText("Ko Ko"));
+      await screen.findByTestId("support-reopen");
+      return user;
+    }
+
+    it("keeps Reject on a conversation that is still open", async () => {
+      const user = userEvent.setup();
+      await renderPage();
+
+      await user.click(await screen.findByText("Ko Ko"));
+      await screen.findByTestId("support-close");
+
+      expect(screen.queryByTestId("support-reopen")).toBeNull();
+      expect(screen.getByTestId("support-reply")).toBeEnabled();
+    });
+
+    it("offers Reopen in place of Reject once it is closed", async () => {
+      await openClosedConversation();
+
+      expect(screen.queryByTestId("support-close")).toBeNull();
+    });
+
+    it("locks the reply box while the conversation is closed", async () => {
+      await openClosedConversation();
+
+      // backend က closed conversation ဆီ စာပို့ရင် 409 ပြန်ပေးလို့ box ကို ပိတ်ထားတယ်။
+      expect(screen.getByTestId("support-reply")).toBeDisabled();
+    });
+
+    it("posts the reopen and pulls a fresh list", async () => {
+      const user = await openClosedConversation();
+      list([USER_CONV, GUEST_CONV]);
+
+      await user.click(screen.getByTestId("support-reopen"));
+
+      await waitFor(() =>
+        expect(api.adminReopenConversation).toHaveBeenCalledWith(USER_CONV._id),
+      );
+      await waitFor(() =>
+        expect(api.adminListConversations).toHaveBeenCalledTimes(2),
+      );
+    });
+  });
+
+  describe("deleting a conversation", () => {
+    function pushDeleted(conversationId: string) {
+      act(() => {
+        mockSocketListeners["conversation:deleted"]({ conversationId });
+      });
+    }
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    async function openThenDelete(confirmed: boolean) {
+      const user = userEvent.setup();
+      jest.spyOn(window, "confirm").mockReturnValue(confirmed);
+      await renderPage();
+      await user.click(await screen.findByText("Ko Ko"));
+      await screen.findByTestId("support-header");
+      // Delete အပြီး backend list မှာ ဒီ conversation မကျန်တော့ဘူး။
+      list([GUEST_CONV]);
+
+      await user.click(screen.getByTestId("support-delete"));
+      return user;
+    }
+
+    it("deletes the open conversation once the admin confirms", async () => {
+      await openThenDelete(true);
+
+      await waitFor(() =>
+        expect(api.adminDeleteConversation).toHaveBeenCalledWith(USER_CONV._id),
+      );
+      await waitFor(() => expect(screen.queryByText("Ko Ko")).toBeNull());
+      // Panel ကိုပါ ပိတ်တယ် — မရှိတော့တဲ့ id ကို ဆက်မကိုင်ဘူး။
+      expect(screen.queryByTestId("support-header")).toBeNull();
+    });
+
+    it("keeps everything when the confirm is cancelled", async () => {
+      await openThenDelete(false);
+
+      expect(api.adminDeleteConversation).not.toHaveBeenCalled();
+      expect(screen.getByTestId("support-header")).toBeInTheDocument();
+      // List row ရော header ရော နှစ်ခုလုံး ဆက်ရှိနေတယ်။
+      expect(screen.getAllByText("Ko Ko")).toHaveLength(2);
+    });
+
+    it("drops the row another admin deleted", async () => {
+      await renderPage();
+      list([GUEST_CONV]);
+
+      pushDeleted(USER_CONV._id);
+
+      await waitFor(() => expect(screen.queryByText("Ko Ko")).toBeNull());
+      expect(await screen.findByText("Guest · 123e4567…")).toBeInTheDocument();
+    });
+
+    it("closes the panel when the open conversation is deleted elsewhere", async () => {
+      const user = userEvent.setup();
+      await renderPage();
+      await user.click(await screen.findByText("Ko Ko"));
+      await screen.findByTestId("support-header");
+
+      pushDeleted(USER_CONV._id);
+
+      await waitFor(() =>
+        expect(screen.queryByTestId("support-header")).toBeNull(),
       );
     });
   });

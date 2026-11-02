@@ -550,6 +550,93 @@ describe("Support endpoints", () => {
     });
   });
 
+  describe("conversation deletion", () => {
+    async function seedConversation() {
+      const conv = await Conversation.create({ guestId: GUEST_ID });
+      await Message.create({
+        conversationId: conv._id,
+        senderType: "customer",
+        guestId: GUEST_ID,
+        body: "junk",
+      });
+      return conv;
+    }
+
+    it("admin deletes the conversation together with its messages", async () => {
+      const admin = await createUser("admin");
+      const conv = await seedConversation();
+
+      const res = await request(app)
+        .delete(`/api/support/admin/conversations/${conv._id}`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`);
+
+      expect(res.status).toBe(200);
+      expect(await Conversation.findById(conv._id)).toBeNull();
+      expect(await Message.countDocuments({ conversationId: conv._id })).toBe(0);
+    });
+
+    it("leaves other conversations untouched", async () => {
+      const admin = await createUser("admin");
+      const junk = await seedConversation();
+      const kept = await seedConversation();
+
+      await request(app)
+        .delete(`/api/support/admin/conversations/${junk._id}`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`);
+
+      expect(await Conversation.findById(kept._id)).not.toBeNull();
+      expect(await Message.countDocuments({ conversationId: kept._id })).toBe(1);
+    });
+
+    it("blocks an owner even for a conversation they own", async () => {
+      const owner = await createUser("owner");
+      const customer = await createUser("user");
+      const conv = await Conversation.create({
+        userId: customer._id,
+        ownerId: owner._id,
+      });
+
+      const res = await request(app)
+        .delete(`/api/support/admin/conversations/${conv._id}`)
+        .set("Authorization", `Bearer ${makeToken(owner)}`);
+
+      expect(res.status).toBe(403);
+      expect(await Conversation.findById(conv._id)).not.toBeNull();
+    });
+
+    it("blocks a customer and an anonymous caller", async () => {
+      const user = await createUser("user");
+      const conv = await seedConversation();
+
+      const asUser = await request(app)
+        .delete(`/api/support/admin/conversations/${conv._id}`)
+        .set("Authorization", `Bearer ${makeToken(user)}`);
+      expect(asUser.status).toBe(403);
+
+      const anonymous = await request(app).delete(
+        `/api/support/admin/conversations/${conv._id}`,
+      );
+      expect(anonymous.status).toBe(401);
+
+      expect(await Conversation.findById(conv._id)).not.toBeNull();
+    });
+
+    it("rejects an invalid id and an unknown conversation", async () => {
+      const admin = await createUser("admin");
+      const token = makeToken(admin);
+
+      const invalid = await request(app)
+        .delete("/api/support/admin/conversations/not-an-id")
+        .set("Authorization", `Bearer ${token}`);
+      expect(invalid.status).toBe(400);
+
+      const missing = await request(app)
+        .delete(`/api/support/admin/conversations/${new mongoose.Types.ObjectId()}`)
+        .set("Authorization", `Bearer ${token}`);
+      expect(missing.status).toBe(404);
+    });
+  });
+
   describe("validation", () => {
     it("rejects empty message body", async () => {
       const start = await request(app)

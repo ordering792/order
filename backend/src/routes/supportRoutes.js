@@ -57,6 +57,12 @@ router.post(
 );
 
 // Admin only
+router.delete(
+  "/admin/conversations/:id",
+  auth,
+  adminOnly,
+  controller.adminDeleteConversation,
+);
 router.get("/admin/online", auth, adminOnly, controller.getOnlineStatus);
 
 module.exports = router;
