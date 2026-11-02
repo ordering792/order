@@ -101,6 +101,27 @@ export default function AdminSupportPage() {
     }
   }, []);
 
+  // ဖတ်ပြီး လက်မှတ်ရေးတာ — backend က customer စာတိုင်းရဲ့ readAt ကို stamp လုပ်လို့
+  // poll က ဒီ conversation ကို unread 0 ပြန်ပေးမယ်။ Request မအောင်ရင် poll က
+  // badge ကို ပြန်တင်ပေးမယ်, ဒါကြောင့် အောင်တဲ့အခါမှာပဲ ချက်ချင်း 0 ပြောင်းတယ်။
+  const clearUnread = useCallback((conversationId: string) => {
+    void api
+      .adminMarkConversationRead(conversationId)
+      .then(() => {
+        setConversations((prev) =>
+          prev.map((c) =>
+            c._id === conversationId ? { ...c, unreadCountByAdmin: 0 } : c,
+          ),
+        );
+        setSelected((current) =>
+          current?._id === conversationId
+            ? { ...current, unreadCountByAdmin: 0 }
+            : current,
+        );
+      })
+      .catch(() => {});
+  }, []);
+
   // Search ရိုက်နေတိုင်း request မပို့ဘူး — 350ms နားထောင်ပြီးမှ ပို့တယ်။
   useEffect(() => {
     const timer = setTimeout(() => void load(), search ? 350 : 0);
@@ -108,9 +129,8 @@ export default function AdminSupportPage() {
     return () => clearTimeout(timer);
   }, [load, search]);
 
-  // Conversation ဖွင့်လျှင် ဖတ်ပြီး လက်မှတ်ရေးမယ် — backend က customer စာ
-  // တိုင်းရဲ့ readAt ကို stamp လုပ်ပြီး badge ကို ပြန်ရှင်းမယ် (poll အဖြေကို
-  // မစောင့်ဘူး, ဒါမှ flash ပြန်မပေါ်)။ မရှင်းနိုင်ရင် 15s poll က ပြင်ပေးမယ်။
+  // Conversation ဖွင့်လျှင် ဖတ်ပြီး လက်မှတ်ရေးမယ် — poll အဖြေကို မစောင့်ဘူး,
+  // ဒါမှ flash ပြန်မပေါ်။
   const open = useCallback(
     async (conversation: AdminConversation) => {
       setSelected(conversation);
@@ -118,25 +138,9 @@ export default function AdminSupportPage() {
       setMessages([]);
       await loadMessages(conversation._id);
 
-      if (!conversation.unreadCountByAdmin) return;
-
-      void api
-        .adminMarkConversationRead(conversation._id)
-        .then(() => {
-          setConversations((prev) =>
-            prev.map((c) =>
-              c._id === conversation._id ? { ...c, unreadCountByAdmin: 0 } : c,
-            ),
-          );
-          setSelected((current) =>
-            current?._id === conversation._id
-              ? { ...current, unreadCountByAdmin: 0 }
-              : current,
-          );
-        })
-        .catch(() => {});
+      if (conversation.unreadCountByAdmin) clearUnread(conversation._id);
     },
-    [loadMessages],
+    [loadMessages, clearUnread],
   );
 
   // User က စာပို့တာနဲ့ ချက်ချင်း ပြမယ် — conversation:new / conversation:updated
@@ -155,6 +159,13 @@ export default function AdminSupportPage() {
       // မဟုတ်ရင် အခြား conversation ရဲ့ စာတွေ ပြနေမယ်။
       if (payload?.conversationId && selected?._id === payload.conversationId) {
         void loadMessages(payload.conversationId);
+        // စာပို့တဲ့အခါ backend က message:new နဲ့ ဒီ event နှစ်ခုလုံး ပို့တယ် —
+        // ဒီမှာပဲ ဖတ်ပြီး လက်မှတ်ရေးတယ် (တစ်ကြိမ်တည်း)။ Admin က tab ကို
+        // နောက်မှာထားရင် မရေးဘူး: badge ဆက်တိုးမယ်, "မဖြေရသေးတာ ရှိသေး"
+        // ဆိုတဲ့ signal မပျောက်အောင်။
+        if (document.visibilityState === "visible") {
+          clearUnread(payload.conversationId);
+        }
       }
     };
 
@@ -168,7 +179,7 @@ export default function AdminSupportPage() {
       socket.off("conversation:updated", onConversationUpdated);
       socket.off("connect", refresh);
     };
-  }, [load, loadMessages, selected]);
+  }, [clearUnread, load, loadMessages, selected]);
 
   // ဖွင့်ထားတဲ့ conversation ရဲ့ id — effect ကို object identity မဟုတ်ဘဲ
   // ဒီ string နဲ့ပဲ ပြန်ဆက်မယ် (15s poll က selected object အသစ်ကို ပြန်ထည့်လို့)။
@@ -221,6 +232,9 @@ export default function AdminSupportPage() {
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
       void load(true);
+      // Tab ပြန်လာချိန်မှာ ဖွင့်ထားတဲ့ panel က စာတွေ ဖတ်ပြီးသား — နောက်မှာထားချိန်
+      // တိုးသွားတဲ့ badge ကို ဒီမှာ ပြန်ရှင်းမယ်။
+      if (selectedId) clearUnread(selectedId);
     };
 
     window.addEventListener("focus", onVisible);
@@ -236,7 +250,7 @@ export default function AdminSupportPage() {
       document.removeEventListener("visibilitychange", onVisible);
       clearInterval(timer);
     };
-  }, [load]);
+  }, [clearUnread, load, selectedId]);
 
   const send = async () => {
     if (!selected || !reply.trim()) return;

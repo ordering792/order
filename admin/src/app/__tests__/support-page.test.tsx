@@ -246,6 +246,76 @@ describe("Admin support page", () => {
       });
     }
 
+    function pushUpdated(conversationId: string) {
+      act(() => {
+        mockSocketListeners["conversation:updated"]({ conversationId });
+      });
+    }
+
+    // jsdom က "visible" ပေးတာမို့ tab နောက်မှာထားတဲ့ အခြေအနေကို ကိုယ်တိုင် တပ်တယ်။
+    function withVisibility(state: string, run: () => Promise<void>) {
+      const original = Object.getOwnPropertyDescriptor(document, "visibilityState");
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => state,
+      });
+
+      return run().finally(() => {
+        if (original) {
+          Object.defineProperty(document, "visibilityState", original);
+        }
+      });
+    }
+
+    it("clears the badge that a live message re-opened", async () => {
+      const user = userEvent.setup();
+      await renderPage();
+      await user.click(await screen.findByText("Ko Ko"));
+      await screen.findByTestId("support-header");
+      expect(api.adminMarkConversationRead).not.toHaveBeenCalled();
+
+      // Guest စာပို့ → poll က backend အမှန် unread 2 ကို ပြန်ပေးတယ်။
+      list([{ ...USER_CONV, unreadCountByAdmin: 2 }, GUEST_CONV]);
+      pushUpdated(USER_CONV._id);
+
+      await waitFor(() =>
+        expect(api.adminMarkConversationRead).toHaveBeenCalledWith(USER_CONV._id),
+      );
+      await waitFor(() =>
+        expect(screen.queryByTestId("unread-badge")).toBeNull(),
+      );
+    });
+
+    it("leaves the badge counting up while the tab is hidden", async () => {
+      const user = userEvent.setup();
+      await renderPage();
+      await user.click(await screen.findByText("Ko Ko"));
+      await screen.findByTestId("support-header");
+
+      return withVisibility("hidden", async () => {
+        list([{ ...USER_CONV, unreadCountByAdmin: 2 }, GUEST_CONV]);
+        pushUpdated(USER_CONV._id);
+
+        await screen.findByTestId("unread-badge");
+        expect(api.adminMarkConversationRead).not.toHaveBeenCalled();
+      });
+    });
+
+    it("does not mark another conversation read when it updates", async () => {
+      const user = userEvent.setup();
+      await renderPage();
+      await user.click(await screen.findByText("Ko Ko"));
+      await screen.findByTestId("support-header");
+
+      list([{ ...USER_CONV, unreadCountByAdmin: 2 }, GUEST_CONV]);
+      pushUpdated(GUEST_CONV._id);
+
+      // ဒီ event က ဖွင့်ထားတဲ့ conversation မဟုတ်လို့ refresh ပဲဖြစ်ပြီး
+      // ဖတ်ပြီး လက်မှတ် မရေးဘူး — badge က ဆက်နေမယ်။
+      await screen.findByTestId("unread-badge");
+      expect(api.adminMarkConversationRead).not.toHaveBeenCalled();
+    });
+
     it("joins the conversation room as soon as it is opened", async () => {
       await openUserConversation();
 
