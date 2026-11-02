@@ -108,9 +108,9 @@ function AdminShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-screen w-full bg-slate-100 text-slate-800">
-      {/* Sidebar */}
+      {/* Sidebar — desktop မှာ sticky ဖြစ်လို့ page scroll ဆွဲတာနဲ့ မလိုက်တက်ဘူး။ */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 shrink-0 bg-slate-900 text-slate-200 transition-transform lg:static lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 w-64 shrink-0 bg-slate-900 text-slate-200 transition-transform lg:sticky lg:h-screen lg:self-start lg:translate-x-0 ${
           isMenuOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
