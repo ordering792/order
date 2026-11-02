@@ -19,13 +19,14 @@ import {
   type LangSelection,
 } from "./language";
 
-export type Lang = "en" | "es" | "pt" | "ar" | "hi" | "ja" | "th" | "ko" | "zh";
+export type Lang = "en" | "es" | "pt" | "ar" | "ur" | "hi" | "ja" | "th" | "ko" | "zh";
 
 export const LANGS: readonly Lang[] = [
   "en",
   "es",
   "pt",
   "ar",
+  "ur",
   "hi",
   "ja",
   "th",
@@ -40,6 +41,7 @@ const LANG_NAMES: Record<Lang, string> = {
   es: "Español (Spain)",
   pt: "Português (Brazil)",
   ar: "العربية",
+  ur: "Urdu (Pakistan)",
   hi: "हिन्दी (India)",
   ja: "日本語",
   th: "ไทย (Thailand)",
@@ -89,7 +91,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     document.documentElement.lang = lang;
-    document.documentElement.dir = "ltr";
+    document.documentElement.dir = lang === "ar" || lang === "ur" ? "rtl" : "ltr";
   }, [lang]);
 
   const value = useMemo(

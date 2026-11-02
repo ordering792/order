@@ -11,7 +11,7 @@ export default function BottomNav() {
   const t = useT();
 
   return (
-    <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[500px] bg-white border-t border-gray-100 flex justify-around items-center py-1.5 px-1 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-50">
+    <nav dir="ltr" className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[500px] bg-white border-t border-gray-100 flex justify-around items-center py-1.5 px-1 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-50">
       
       <NavItem icon={<Home size={22} />} label={t("nav.home")} href="/" active={pathname === "/"} />
       <NavItem icon={<ClipboardList size={22} />} label={t("nav.orders")} href="/orders" active={pathname === "/orders"} />

@@ -33,7 +33,6 @@ const countries = [
   { name: "Ukraine", code: "+380", flag: "ua" },
 
   // --- South Asia ---
-  { name: "India", code: "+91", flag: "in" },
   { name: "Pakistan", code: "+92", flag: "pk" },
   { name: "Bangladesh", code: "+880", flag: "bd" },
   { name: "Nepal", code: "+977", flag: "np" },

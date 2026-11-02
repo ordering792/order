@@ -4,8 +4,8 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  ChevronDown, Send,
-  Home, ClipboardList, Headphones, User
+  ChevronDown, Send, Bot,
+  Home, ClipboardList, Headphones, User, UserCircle
 } from "lucide-react";
 import CountryLanguageModal from "../components/CountryLanguageModal";
 import { getStoredLang } from "../../lib/language";
@@ -19,7 +19,8 @@ import Toast from "../components/Toast";
 
 interface ChatMessage {
   _id: string;
-  senderType: "customer" | "admin";
+  senderType: "customer" | "admin" | "ai";
+  senderName?: string | null;
   body: string;
   createdAt: string;
 }
@@ -31,6 +32,7 @@ export default function SupportPage() {
   const [inputText, setInputText] = useState("");
   const [isLangModalOpen, setIsLangModalOpen] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState(getStoredLang);
+  const [displayName, setDisplayName] = useState("");
   const { toast, showToast } = useToast(2000);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -38,6 +40,7 @@ export default function SupportPage() {
 
   useEffect(() => {
     if (!user) return;
+    setDisplayName(user.name || "");
     setLoading(true);
     api.myConversations()
       .then((res) => {
@@ -56,6 +59,7 @@ export default function SupportPage() {
         const msgs = (data.messages as ChatMessage[]).map((m) => ({
           _id: m._id,
           senderType: m.senderType,
+          senderName: m.senderName || null,
           body: m.body,
           createdAt: m.createdAt,
         }));
@@ -156,7 +160,7 @@ export default function SupportPage() {
   return (
     <RequireAuth>
     <div className="bg-[#1e293b] flex justify-center items-center min-h-screen m-0 p-0 overflow-hidden">
-      <div className="w-full max-w-[500px] h-screen bg-white shadow-2xl flex flex-col justify-between relative overflow-hidden">
+      <div dir="ltr" className="w-full max-w-[500px] h-screen bg-white shadow-2xl flex flex-col justify-between relative overflow-hidden">
 
         <Toast toast={toast} compact />
 
@@ -166,6 +170,11 @@ export default function SupportPage() {
               R
             </div>
             <span className="font-semibold text-gray-800 text-base">{t("support.title")}</span>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-gray-600">{t("support.you")}</span>
+            <span className="font-bold text-gray-800">{displayName}</span>
           </div>
 
           <button
@@ -191,13 +200,26 @@ export default function SupportPage() {
                   </div>
                 )}
 
+                {msg.senderType === 'ai' && (
+                  <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 font-bold text-xs shrink-0 shadow-sm">
+                    <Bot size={14} /> AI
+                  </div>
+                )}
+
                 <div className={`p-3.5 rounded-2xl shadow-sm max-w-[75%] text-xs leading-relaxed ${
                   msg.senderType === 'customer'
-                    ? 'bg-[#ff6600] text-white rounded-tr-sm'
+                    ? 'bg-[#ff6600] text-white rounded-tr-sm ml-auto'
+                    : msg.senderType === 'ai'
+                    ? 'bg-gray-100 text-gray-700 rounded-tl-sm border border-gray-200 text-gray-600'
                     : 'bg-white border border-gray-100 text-gray-700 rounded-tl-sm'
                 }`}>
                   {msg.body && <p>{msg.body}</p>}
-                  <span className={`text-[9px] mt-1 block ${msg.senderType === 'customer' ? 'text-orange-100' : 'text-gray-400'}`}>
+                  <span className={`text-[9px] mt-1 block ${
+                    msg.senderType === 'customer'
+                      ? 'text-orange-100'
+                      : 'text-gray-400'
+                  }`}>
+                    {msg.senderType === 'customer' && msg.senderName ? `${msg.senderName} • ` : ""}
                     {new Date(msg.createdAt).toLocaleTimeString()}
                   </span>
                 </div>

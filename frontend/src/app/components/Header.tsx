@@ -13,7 +13,7 @@ export default function Header() {
   return (
     <>
       {/* ★ sticky အစား fixed ကို သုံးပြီး အပေါ်မှာ အမြဲကပ်ထားပါတယ် */}
-      <header className="fixed top-0 left-1/2 -translate-x-1/2 z-50 w-full max-w-[500px] bg-white shadow-sm">
+      <header dir="ltr" className="fixed top-0 left-1/2 -translate-x-1/2 z-50 w-full max-w-[500px] bg-white shadow-sm">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="w-8 h-8 bg-[#7a3cdb] rounded-lg flex items-center justify-center">
             <span className="text-white font-bold text-lg">R</span>

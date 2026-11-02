@@ -166,7 +166,7 @@ export const api = {
   products: () => request<{ products: unknown[] }>("/products"),
 
   // ---- Support ----
-  startConversation: (input: { subject?: string }) =>
+  startConversation: (input: { subject?: string; guestId?: string; guestName?: string }) =>
     request<{ conversation: unknown }>("/support/conversations", {
       method: "POST",
       body: JSON.stringify(input),
