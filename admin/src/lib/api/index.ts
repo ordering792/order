@@ -535,7 +535,7 @@ export const api = {
   adminOnlineStatus: () =>
     request<{ online: unknown }>("/support/admin/online"),
 
-  uploadAuth: (purpose: "product" | "deposit-proof") =>
+  uploadAuth: (purpose: "product" | "deposit-proof" | "wallet-qr") =>
     request<{
       token: string;
       expire: number;

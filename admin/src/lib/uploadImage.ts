@@ -1,6 +1,6 @@
 import { api } from "./api";
 
-export type ImageUploadPurpose = "product" | "deposit-proof";
+export type ImageUploadPurpose = "product" | "deposit-proof" | "wallet-qr";
 
 const DEFAULT_MAX_FILE_SIZE = 10 * 1024 * 1024;
 const ALLOWED_TYPES = new Set([

@@ -200,7 +200,7 @@ export const api = {
       { method: "POST", body: JSON.stringify(guestBody()) },
     ),
 
-  uploadAuth: (purpose: "product" | "deposit-proof") =>
+  uploadAuth: (purpose: "product" | "deposit-proof" | "wallet-qr") =>
     request<{
       token: string;
       expire: number;

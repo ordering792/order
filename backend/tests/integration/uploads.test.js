@@ -110,4 +110,25 @@ describe("GET /api/uploads/auth", () => {
     expect(res.status).toBe(200);
     expect(res.body.folder).toBe("/products");
   });
+
+  it("allows payout accounts for wallet qr purpose", async () => {
+    for (const role of ["admin", "owner"]) {
+      const user = await createUser(role);
+      const res = await request(app)
+        .get("/api/uploads/auth?purpose=wallet-qr")
+        .set("Authorization", `Bearer ${makeToken(user)}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.folder).toBe("/wallet-qr");
+    }
+  });
+
+  it("rejects normal user for wallet qr purpose", async () => {
+    const user = await createUser("user");
+    const res = await request(app)
+      .get("/api/uploads/auth?purpose=wallet-qr")
+      .set("Authorization", `Bearer ${makeToken(user)}`);
+
+    expect(res.status).toBe(403);
+  });
 });

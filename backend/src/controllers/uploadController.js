@@ -1,8 +1,15 @@
 const crypto = require("crypto");
 const { z } = require("zod");
+const { isPayoutAccount } = require("../services/walletGuard");
 
-const purposeSchema = z.enum(["product", "deposit-proof"]);
+const purposeSchema = z.enum(["product", "deposit-proof", "wallet-qr"]);
 const AUTH_TTL_SECONDS = 10 * 60;
+
+const UPLOAD_FOLDERS = {
+  product: "/products",
+  "deposit-proof": "/deposit-proofs",
+  "wallet-qr": "/wallet-qr",
+};
 
 function getImageKitConfig() {
   return {
@@ -13,7 +20,7 @@ function getImageKitConfig() {
 }
 
 function getUploadFolder(purpose) {
-  return purpose === "product" ? "/products" : "/deposit-proofs";
+  return UPLOAD_FOLDERS[purpose];
 }
 
 exports.authorize = (req, res) => {
@@ -25,6 +32,12 @@ exports.authorize = (req, res) => {
 
   if (parsed.data === "product" && req.user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
+  }
+
+  // Payout QR ကို admin panel က admin/owner သားပဲ ထည့်တယ် —
+  // ဒါကြောင့် ဒီ purpose ကို ordinary user ဆီ မပို့ဘူး။
+  if (parsed.data === "wallet-qr" && !isPayoutAccount(req.user)) {
+    return res.status(403).json({ message: "Payout account access required" });
   }
 
   const { publicKey, privateKey, urlEndpoint } = getImageKitConfig();
