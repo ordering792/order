@@ -328,6 +328,121 @@ describe("Admin & owner endpoints", () => {
     });
   });
 
+  describe("Scope counts (counts field)", () => {
+    const MINUTE = 60_000;
+
+    async function listAs(admin, query = "") {
+      return request(app)
+        .get(`/api/admin/users${query}`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`);
+    }
+
+    // Requesting account ရဲ့ stamp ကို auth middleware က fire-and-forget ရေးတယ်၊
+    // ဒါကြောင့် ၅ မိနစ် window အတွင်း ထည့်ထားတယ် — bucket မပြောင်းလဲဘူး။
+    async function seedMixedScope() {
+      const admin = await createUser("admin", {
+        lastSeenAt: new Date(Date.now() - MINUTE),
+      });
+      const active = await createUser("user", {
+        name: "offline two",
+        lastSeenAt: new Date(Date.now() - MINUTE),
+      });
+      const stale = await createUser("user", {
+        name: "offline one",
+        lastSeenAt: new Date(Date.now() - 20 * MINUTE),
+      });
+      const never = await createUser("user", { name: "never seen" });
+      // Fresh stamp ဒါပေမဲ့ burned အလံ — bucket က presence ကို အလံက ဖြတ်တယ်။
+      const burned = await createUser("user", {
+        name: "burned one",
+        status: "burned",
+        lastSeenAt: new Date(Date.now() - MINUTE),
+      });
+
+      return { admin, active, stale, never, burned };
+    }
+
+    it("buckets the whole scope and adds up to all", async () => {
+      const { admin } = await seedMixedScope();
+
+      const res = await listAs(admin);
+
+      expect(res.status).toBe(200);
+      expect(res.body.counts).toEqual({
+        all: 5,
+        online: 2,
+        offline: 2,
+        burned: 1,
+      });
+      expect(res.body.counts.online + res.body.counts.offline + res.body.counts.burned).toBe(
+        res.body.counts.all,
+      );
+    });
+
+    it("leaves the breakdown alone when a status filter narrows the rows", async () => {
+      const { admin } = await seedMixedScope();
+      const scope = { all: 5, online: 2, offline: 2, burned: 1 };
+
+      const online = await listAs(admin, "?status=online");
+      const burned = await listAs(admin, "?status=burned");
+
+      // Online ရွေးတဲ့အခါ Offline/Burned သုည မဖြစ်ရဘူး — tile လေးခုလုံး တစ်ပုံစံ။
+      expect(online.body.total).toBe(2);
+      expect(online.body.counts).toEqual(scope);
+      expect(burned.body.total).toBe(1);
+      expect(burned.body.counts).toEqual(scope);
+    });
+
+    it("follows the search and role filters", async () => {
+      const { admin } = await seedMixedScope();
+
+      const search = await listAs(admin, "?search=offline");
+      const users = await listAs(admin, "?role=user");
+
+      expect(search.body.counts).toEqual({
+        all: 2,
+        online: 1,
+        offline: 1,
+        burned: 0,
+      });
+      expect(users.body.counts).toEqual({
+        all: 4,
+        online: 1,
+        offline: 2,
+        burned: 1,
+      });
+    });
+
+    it("counts only the owner's downline even with a status filter", async () => {
+      const owner = await createUser("owner", {
+        lastSeenAt: new Date(Date.now() - MINUTE),
+      });
+      await createUser("user", {
+        ownerId: owner._id,
+        lastSeenAt: new Date(Date.now() - MINUTE),
+      });
+      await createUser("user", {
+        ownerId: owner._id,
+        status: "burned",
+        lastSeenAt: new Date(Date.now() - 20 * MINUTE),
+      });
+      // Scope အပြင်က online အဖွဲ့ — counts ထဲ ဝင်မလာရဘူး။
+      await createUser("user", { lastSeenAt: new Date(Date.now() - MINUTE) });
+      await createUser("admin", { lastSeenAt: new Date(Date.now() - MINUTE) });
+
+      const res = await listAs(owner, "?status=burned");
+
+      expect(res.status).toBe(200);
+      expect(res.body.total).toBe(1);
+      expect(res.body.counts).toEqual({
+        all: 3,
+        online: 2,
+        offline: 0,
+        burned: 1,
+      });
+    });
+  });
+
   describe("PATCH /api/admin/users/:id", () => {
     it("admin can change a user role", async () => {
       const admin = await createUser("admin");
@@ -606,6 +721,7 @@ describe("Admin & owner endpoints", () => {
         .send({
           cryptoAddress: "OWNERWALLET000000000000000000002",
           qrUrl: "https://example.com/owner2.png",
+          password: "password123",
         });
 
       expect(res.status).toBe(200);
@@ -636,6 +752,7 @@ describe("Admin & owner endpoints", () => {
         .send({
           cryptoAddress: "OWNERWALLET000000000000000000003",
           cryptoQrUrl: "https://example.com/owner3.png",
+          password: "password123",
         });
 
       expect(res.status).toBe(200);
@@ -643,6 +760,50 @@ describe("Admin & owner endpoints", () => {
       const updated = await User.findById(owner._id);
       expect(updated.cryptoAddress).toBe("OWNERWALLET000000000000000000003");
       expect(updated.cryptoQrUrl).toBe("https://example.com/owner3.png");
+    });
+
+    it("needs the admin password before moving an owner payout address", async () => {
+      const admin = await createUser("admin");
+      const owner = await createUser("owner", {
+        cryptoAddress: "OWNERWALLET000000000000000000004",
+      });
+
+      const noPassword = await request(app)
+        .patch(`/api/admin/users/${owner._id}`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ cryptoAddress: "HIJACKEDWALLET0000000000000000005" });
+
+      expect(noPassword.status).toBe(400);
+      expect(noPassword.body.message).toMatch(/password is required/i);
+
+      const wrongPassword = await request(app)
+        .patch(`/api/admin/users/${owner._id}`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({
+          cryptoAddress: "HIJACKEDWALLET0000000000000000005",
+          password: "notmyassword",
+        });
+
+      expect(wrongPassword.status).toBe(400);
+      expect(wrongPassword.body.message).toBe("Incorrect password");
+
+      const untouched = await User.findById(owner._id);
+      expect(untouched.cryptoAddress).toBe("OWNERWALLET000000000000000000004");
+    });
+
+    it("still changes role, status and note without a password", async () => {
+      const admin = await createUser("admin");
+      const owner = await createUser("owner");
+
+      const res = await request(app)
+        .patch(`/api/admin/users/${owner._id}`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ adminNote: "trusted partner", status: "offline" });
+
+      expect(res.status).toBe(200);
+
+      const updated = await User.findById(owner._id).select("+adminNote");
+      expect(updated.adminNote).toBe("trusted partner");
     });
   });
 
@@ -1025,10 +1186,63 @@ describe("Admin & owner endpoints", () => {
       const ownerRes = await request(app)
         .put(`/api/admin/users/${owner._id}/wallet-address`)
         .set("Authorization", `Bearer ${makeToken(admin)}`)
-        .send({ walletAddress: TRON_ADDRESS });
+        .send({ walletAddress: TRON_ADDRESS, password: "password123" });
 
       expect(ownerRes.status).toBe(200);
       expect((await User.findById(owner._id)).walletAddress).toBe(TRON_ADDRESS);
+    });
+
+    // role=user က support လုပ်ငန်း — password မတောင်းဘူး။ owner ဆိုရင်
+    // နှိပ်နေတဲ့ admin သူ့ login password နဲ့ အတည်ပြုရတယ်။
+    it("asks the admin for a password only on an owner row", async () => {
+      const admin = await createUser("admin");
+      const target = await createUser("user");
+      const owner = await createUser("owner", {
+        walletAddress: "TOldOwnerPayoutAddress111111111111",
+      });
+
+      const userRes = await request(app)
+        .put(`/api/admin/users/${target._id}/wallet-address`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ walletAddress: TRON_ADDRESS });
+
+      expect(userRes.status).toBe(200);
+
+      const ownerRes = await request(app)
+        .put(`/api/admin/users/${owner._id}/wallet-address`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ walletAddress: TRON_ADDRESS });
+
+      expect(ownerRes.status).toBe(400);
+      expect(ownerRes.body.message).toMatch(/password is required/i);
+
+      const wrongRes = await request(app)
+        .put(`/api/admin/users/${owner._id}/wallet-address`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ walletAddress: TRON_ADDRESS, password: "wrongpassword" });
+
+      expect(wrongRes.status).toBe(400);
+      expect(wrongRes.body.message).toBe("Incorrect password");
+
+      const untouched = await User.findById(owner._id);
+      expect(untouched.walletAddress).toBe("TOldOwnerPayoutAddress111111111111");
+    });
+
+    it("will not let one admin move another admin's address", async () => {
+      const admin = await createUser("admin");
+      const peer = await createUser("admin", {
+        walletAddress: "TOldAdminPayoutAddress1111111111111",
+      });
+
+      const res = await request(app)
+        .put(`/api/admin/users/${peer._id}/wallet-address`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ walletAddress: TRON_ADDRESS, password: "password123" });
+
+      expect(res.status).toBe(403);
+
+      const untouched = await User.findById(peer._id);
+      expect(untouched.walletAddress).toBe("TOldAdminPayoutAddress1111111111111");
     });
 
     it("rejects an address that is not a TRON (TRC20) address", async () => {

@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ApiAdminUser } from "@/lib/api";
+import type { ApiAdminUser, ApiUserCounts } from "@/lib/api";
 import { api } from "@/lib/api";
 import { LanguageProvider } from "@/lib/i18n";
 import AdminUsersPage from "@/app/users/page";
@@ -54,11 +54,16 @@ function row(overrides: Partial<ApiAdminUser> = {}): ApiAdminUser {
 // T + base58 ၃၃ လုံး = ၃၄ လုံး (backend TRON_ADDRESS အတိုင်း)။
 const NEW_ADDRESS = "TQSVhFzR7pN3yKdLmXcBv8tGnWqJs4Yp2r";
 
-function listUsers(users: ApiAdminUser[]) {
+// Count tile တွေ ဖတ်တဲ့ scope counts။ `total` (filtered rows) နဲ့ သေချာ မတူအောင်
+// 40/7/30/3 — tile က counts ကိုပဲ ဖတ်တယ်၊ row count ကို မဟုတ်ဘူး။
+const ALL_COUNTS: ApiUserCounts = { all: 40, online: 7, offline: 30, burned: 3 };
+
+function listUsers(users: ApiAdminUser[], counts = ALL_COUNTS) {
   (api.adminListUsers as jest.Mock).mockResolvedValue({
     users,
     total: users.length,
     pages: 1,
+    counts,
   });
 }
 
@@ -165,6 +170,87 @@ describe("Admin users page", () => {
 
       expect(cells.getByText("Offline")).toBeInTheDocument();
       expect(cells.queryByTitle(/^Last seen /)).toBeNull();
+    });
+  });
+
+  describe("count tiles", () => {
+    // Tile အမည်တွေ (Online/Offline/Burned) က status dropdown နဲ့ row badge တွေမှာ
+    // ပါတူတယ် — ဒါကြောင့် testid နဲ့ပဲ ရှာတယ်။
+    async function renderWithCounts(counts = ALL_COUNTS) {
+      listUsers([row()], counts);
+      await renderPage();
+      return screen.findByTestId("count-tile-all");
+    }
+
+    it("shows the scope counts the backend sent", async () => {
+      await renderWithCounts();
+
+      expect(screen.getByTestId("count-tile-all")).toHaveTextContent("40");
+      expect(screen.getByTestId("count-tile-online")).toHaveTextContent("7");
+      expect(screen.getByTestId("count-tile-offline")).toHaveTextContent("30");
+      expect(screen.getByTestId("count-tile-burned")).toHaveTextContent("3");
+    });
+
+    it("presses a tile to filter the table by that status", async () => {
+      const user = userEvent.setup();
+      await renderWithCounts();
+
+      await user.click(screen.getByTestId("count-tile-burned"));
+
+      await waitFor(() =>
+        expect(api.adminListUsers).toHaveBeenLastCalledWith(
+          expect.objectContaining({ status: "burned", page: 1 }),
+        ),
+      );
+      expect(screen.getByTestId("count-tile-burned")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      expect(screen.getByTestId("count-tile-all")).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+    });
+
+    it("keeps the breakdown while a status filter narrows the rows", async () => {
+      const user = userEvent.setup();
+      await renderWithCounts();
+
+      await user.click(screen.getByTestId("count-tile-online"));
+
+      // total = 1 filtered row ဒါပေမဲ့ tile က counts (40/7/30/3) ကိုပဲ ပြရမယ်။
+      expect(await screen.findByTestId("count-tile-all")).toHaveTextContent("40");
+      expect(screen.getByTestId("count-tile-offline")).toHaveTextContent("30");
+    });
+
+    it("releases the active tile back to the unfiltered scope", async () => {
+      const user = userEvent.setup();
+      await renderWithCounts();
+
+      await user.click(screen.getByTestId("count-tile-offline"));
+      await waitFor(() =>
+        expect(api.adminListUsers).toHaveBeenLastCalledWith(
+          expect.objectContaining({ status: "offline" }),
+        ),
+      );
+
+      await user.click(screen.getByTestId("count-tile-offline"));
+      await waitFor(() =>
+        expect(api.adminListUsers).toHaveBeenLastCalledWith(
+          expect.objectContaining({ status: undefined }),
+        ),
+      );
+      expect(screen.getByTestId("count-tile-all")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+
+    it("treats an empty scope as zeros instead of blanks", async () => {
+      await renderWithCounts({ all: 0, online: 0, offline: 0, burned: 0 });
+
+      expect(screen.getByTestId("count-tile-all")).toHaveTextContent("0");
+      expect(screen.getByTestId("count-tile-burned")).toHaveTextContent("0");
     });
   });
 
@@ -294,6 +380,7 @@ describe("Admin users page", () => {
     await user.click(screen.getByRole("button", { name: "Change" }));
 
     const input = await screen.findByTestId("wallet-address-input");
+    expect(screen.queryByTestId("wallet-password-input")).toBeNull();
     await user.type(input, `  ${NEW_ADDRESS}  `);
     await user.click(screen.getByRole("button", { name: "Save" }));
 
@@ -301,6 +388,7 @@ describe("Admin users page", () => {
       expect(api.adminUpdateUserWalletAddress).toHaveBeenCalledWith(
         BASE_ROW._id,
         NEW_ADDRESS,
+        undefined,
       ),
     );
     expect(
@@ -345,6 +433,50 @@ describe("Admin users page", () => {
     expect(await screen.findByText(/pending withdrawal/i)).toBeInTheDocument();
     expect(screen.getByTestId("wallet-address-input")).toHaveValue(NEW_ADDRESS);
     expect(screen.queryByText("Wallet address updated for Ko Ko")).toBeNull();
+  });
+
+  it("asks for the login password on an owner row and sends it", async () => {
+    const user = userEvent.setup();
+    listUsers([row({ role: "owner", name: "Owner Lin" })]);
+    await renderPage();
+
+    await user.click(screen.getByRole("button", { name: "Change" }));
+
+    await user.type(
+      await screen.findByTestId("wallet-address-input"),
+      NEW_ADDRESS,
+    );
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+
+    await user.type(screen.getByTestId("wallet-password-input"), "admin123456");
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(api.adminUpdateUserWalletAddress).toHaveBeenCalledWith(
+        BASE_ROW._id,
+        NEW_ADDRESS,
+        "admin123456",
+      ),
+    );
+  });
+
+  it("keeps the typed password when the server says it is wrong", async () => {
+    const user = userEvent.setup();
+    listUsers([row({ role: "owner", name: "Owner Lin" })]);
+    (api.adminUpdateUserWalletAddress as jest.Mock).mockRejectedValueOnce(
+      new Error("Incorrect password"),
+    );
+    await renderPage();
+
+    await user.click(screen.getByRole("button", { name: "Change" }));
+    await user.type(await screen.findByTestId("wallet-address-input"), NEW_ADDRESS);
+    await user.type(screen.getByTestId("wallet-password-input"), "old123456");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("Incorrect password")).toBeInTheDocument();
+    expect(screen.getByTestId("wallet-address-input")).toHaveValue(NEW_ADDRESS);
+    expect(screen.getByTestId("wallet-password-input")).toHaveValue("old123456");
   });
 
   it("hides the wallet change control from an admin row", async () => {

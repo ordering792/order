@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Search } from "lucide-react";
-import { api, ApiAdminUser } from "@/lib/api";
+import { api, ApiAdminUser, ApiUserCounts } from "@/lib/api";
 import { money } from "@/lib/money";
 import { useAuth } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
@@ -13,6 +13,18 @@ import BalanceAdjustModal, {
 import WalletAddressModal from "../components/WalletAddressModal";
 
 const PLACEHOLDER = "—";
+
+const TILE_CAPTION =
+  "text-[10px] font-semibold uppercase tracking-wide text-slate-500";
+
+// Tile တစ်ခု နှိပ်ရင် status filter ကို ပြောင်းတယ် (active tile ပြန်နှိပ်ရင် ရှင်း)။
+// `all` က status မလိုက်ဘူး — count aggregate က scope (search+role) ကိုပဲ သုံးတယ်။
+const COUNT_TILES = [
+  { status: "", countsKey: "all", labelKey: "admin.stats.users", tone: "text-slate-800" },
+  { status: "online", countsKey: "online", labelKey: "admin.status.online", tone: "text-emerald-600" },
+  { status: "offline", countsKey: "offline", labelKey: "admin.status.offline", tone: "text-slate-400" },
+  { status: "burned", countsKey: "burned", labelKey: "admin.status.burned", tone: "text-red-600" },
+] as const;
 
 function dateTime(value?: string | null) {
   if (!value) return PLACEHOLDER;
@@ -47,6 +59,12 @@ export default function AdminUsersPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
+  const [counts, setCounts] = useState<ApiUserCounts>({
+    all: 0,
+    online: 0,
+    offline: 0,
+    burned: 0,
+  });
   const [search, setSearch] = useState("");
   const [role, setRole] = useState("");
   const [status, setStatus] = useState("");
@@ -85,6 +103,7 @@ export default function AdminUsersPage() {
         setUsers(res.users);
         setTotal(res.total);
         setPages(res.pages);
+        setCounts(res.counts);
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
@@ -165,8 +184,17 @@ export default function AdminUsersPage() {
 
   // run() နဲ့မသုံးဘူး — error ကို modal အတွင်းမှာ ပြချင်လို့ (pending withdrawal
   // 409 လို server message ကို address box အောက်မှာ တိုက်ရိုက် ပြတယ်)။
-  const changeWallet = async (target: ApiAdminUser, walletAddress: string) => {
-    await api.adminUpdateUserWalletAddress(target._id, walletAddress);
+  // Target က owner ဆို admin သူ့ login password လိုတယ် (role=user မလို)။
+  const changeWallet = async (
+    target: ApiAdminUser,
+    walletAddress: string,
+    password: string,
+  ) => {
+    await api.adminUpdateUserWalletAddress(
+      target._id,
+      walletAddress,
+      target.role === "user" ? undefined : password,
+    );
 
     setWalletTarget(null);
     setError("");
@@ -240,6 +268,36 @@ export default function AdminUsersPage() {
           <option value="offline">{t("admin.status.offline")}</option>
           <option value="burned">{t("admin.status.burned")}</option>
         </select>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        {COUNT_TILES.map((tile) => {
+          const active = status === tile.status;
+
+          return (
+            <button
+              key={tile.countsKey}
+              type="button"
+              data-testid={`count-tile-${tile.countsKey}`}
+              aria-pressed={active}
+              onClick={() => {
+                // Active tile ပြန်နှိပ်ရင် filter ရှင်း (Total tile က အမြဲ empty status)။
+                setStatus(active && tile.status ? "" : tile.status);
+                setPage(1);
+              }}
+              className={`flex flex-col gap-1 rounded-lg border px-3 py-2 text-left transition ${
+                active
+                  ? "border-[#ff6600] bg-orange-50/70"
+                  : "border-slate-200 bg-white hover:bg-slate-50"
+              }`}
+            >
+              <span className={TILE_CAPTION}>{t(tile.labelKey)}</span>
+              <span className={`text-lg font-bold ${tile.tone}`}>
+                {counts[tile.countsKey]}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {error && (
@@ -515,8 +573,11 @@ export default function AdminUsersPage() {
         <WalletAddressModal
           userName={walletTarget.name}
           currentAddress={walletTarget.walletAddress ?? null}
+          requiresPassword={walletTarget.role !== "user"}
           onClose={() => setWalletTarget(null)}
-          onSubmit={(walletAddress) => changeWallet(walletTarget, walletAddress)}
+          onSubmit={(walletAddress, password) =>
+            changeWallet(walletTarget, walletAddress, password)
+          }
         />
       )}
     </div>

@@ -22,6 +22,8 @@ const { ownerUserIds } = require("../services/ownershipService");
 const { serializePlan } = require("../services/orderPlanService");
 const {
   hasPendingWithdrawal,
+  isPayoutAccount,
+  confirmLoginPassword,
   PENDING_WITHDRAWAL_MESSAGE,
 } = require("../services/walletGuard");
 
@@ -58,8 +60,11 @@ const updateUserSchema = z
     cryptoAddress: z.string().max(200).nullish(),
     cryptoQrUrl: z.string().max(2000).nullish(),
     adminNote: z.string().trim().max(500).nullish(),
+    // Payout address (cryptoAddress/cryptoQrUrl) ကို ထည့်တဲ့အခါသာ အသုံးဝင် —
+    // admin/owner account ရဲ့ လိပ်စာဆို login password စစ်တယ်။
+    password: z.string().max(100).optional(),
   })
-  .refine((data) => Object.keys(data).length > 0, {
+  .refine((data) => Object.keys(data).some((key) => key !== "password"), {
     message: "No updates provided",
   });
 
@@ -71,6 +76,8 @@ const resetPasswordSchema = z.object({
 // format စစ်တာက util မှာ — user ကိုယ်တိုင်ပြောင်းတဲ့ endpoint နဲ့ တစ်ပြေးညီ။
 const walletAddressSchema = z.object({
   walletAddress: z.string().min(10).max(100),
+  // Target က admin/owner ဆို ဒီ password မရှိဘဲ မပြောင်းရ (controller မှာ စစ်)။
+  password: z.string().max(100).optional(),
 });
 
 // toCents() က sign မပါတဲ့ number string ပဲ ယူတယ် — direction ကို type နဲ့ ခွဲထား။
@@ -92,19 +99,39 @@ exports.listUsers = asyncHandler(async (req, res) => {
 
   const { search, role, status, page, limit } = parsed.data;
   const onlineAfter = new Date(Date.now() - ONLINE_WINDOW_MS);
-  const filter = {};
+
+  // scope = role + search + owner downline သက်သက်။ Count tile တွေက ဒီ subset
+  // ပေါ်မှာ တွက်တယ်၊ status filter ကို မလိုက်နာဘူး — မဟုတ်ရင် Online ရွေးတိုင်း
+  // Offline/Burned က အမြဲ သုည ဖြစ်သွားမယ်။
+  const scope = {};
   const and = [];
 
-  if (role) filter.role = role;
+  if (role) scope.role = role;
+
+  // Owner က ကိုယ့် downline တွေကိုသာ မြင်ရမယ် (ကိုယ်တိုင်လည်း ပါဝင်မယ်)။
+  if (req.user.role === "owner") {
+    scope.$or = [{ ownerId: req.user._id }, { _id: req.user._id }];
+  }
+
+  if (search) {
+    const rx = new RegExp(escapeRegExp(search), "i");
+    and.push({ $or: [{ name: rx }, { phone: rx }, { invitationCode: rx }] });
+  }
+
+  if (and.length) scope.$and = and;
 
   // Online/Offline ကို lastSeenAt ကနေ တွက်တယ် — status field ကို admin က
-  // Burn/Un-burn အလံအဖြစ်ပဲ သုံးတယ်။ Owner scoping က filter.$or ကို ကြာပြီးသား
+  // Burn/Un-burn အလံအဖြစ်ပဲ သုံးတယ်။ Owner scoping က scope.$or ကို ကြာပြီးသား
   // ဖြစ်လို့ ဒီ condition တွေက $and ထဲပဲ ဝင်ရမယ် (မဟုတ်ရင် ဖုံးသွားမယ်)။
+  // status ကို scope မှာ မတင်ဘူး — count aggregate က scope ကိုပဲ သုံးတယ်။
+  const filter = { ...scope };
+
   if (status === "burned") {
     filter.status = "burned";
   } else if (status) {
-    and.push({ status: { $ne: "burned" } });
-    and.push(
+    filter.$and = [
+      ...and,
+      { status: { $ne: "burned" } },
       status === "online"
         ? { lastSeenAt: { $gte: onlineAfter } }
         : {
@@ -113,20 +140,8 @@ exports.listUsers = asyncHandler(async (req, res) => {
               { lastSeenAt: { $lt: onlineAfter } },
             ],
           },
-    );
+    ];
   }
-
-  // Owner က ကိုယ့် downline တွေကိုသာ မြင်ရမယ် (ကိုယ်တိုင်လည်း ပါဝင်မယ်)။
-  if (req.user.role === "owner") {
-    filter.$or = [{ ownerId: req.user._id }, { _id: req.user._id }];
-  }
-
-  if (search) {
-    const rx = new RegExp(escapeRegExp(search), "i");
-    and.push({ $or: [{ name: rx }, { phone: rx }, { invitationCode: rx }] });
-  }
-
-  if (and.length) filter.$and = and;
 
   // adminNote က admin ဆီပဲ သွားရမယ် — owner က ကိုယ့် downline ကို ဖတ်တဲ့အခါ
   // field ကို လုံးဝ မတောင်းဘူး (schema မှာ select: false ဖြစ်နေပြီးသား)။
@@ -134,7 +149,7 @@ exports.listUsers = asyncHandler(async (req, res) => {
     "name phone invitationCode role status balance walletAddress ownerId language cryptoAddress cryptoQrUrl createdAt ipAddress lastLoginAt lastSeenAt lastUserAgent" +
     (req.user.role === "admin" ? " +adminNote" : "");
 
-  const [users, total] = await Promise.all([
+  const [users, total, bucketRows] = await Promise.all([
     User.find(filter)
       .select(selectedFields)
       // lastLoginAt မရှိသူ (ဘယ်တော့မှ မဝင်ခဲ့သူ) က BSON null အဖြစ် အောက်ဆုံးရောက်မယ်။
@@ -143,7 +158,34 @@ exports.listUsers = asyncHandler(async (req, res) => {
       .limit(limit)
       .lean(),
     User.countDocuments(filter),
+    // Count tile တွေ — isOnline() နဲ့ အတူတူပဲ (burned အရင်၊ ပြီးတော့ ၅ မိနစ်
+    // window)၊ ဒါပေမဲ့ scope သက်သက်ပေါ် တွက်တယ်။ lastSeenAt မရှိတဲ့ doc က
+    // null < date ဖြစ်လို့ automatic offline ဖြစ်သွားတယ်။
+    User.aggregate([
+      { $match: scope },
+      {
+        $project: {
+          bucket: {
+            $switch: {
+              branches: [
+                { case: { $eq: ["$status", "burned"] }, then: "burned" },
+                { case: { $gte: ["$lastSeenAt", onlineAfter] }, then: "online" },
+              ],
+              default: "offline",
+            },
+          },
+        },
+      },
+      { $group: { _id: "$bucket", n: { $sum: 1 } } },
+    ]),
   ]);
+
+  const counts = { all: 0, online: 0, offline: 0, burned: 0 };
+
+  for (const row of bucketRows) {
+    counts[row._id] = row.n;
+    counts.all += row.n;
+  }
 
   res.json({
     users: users.map((user) => ({
@@ -154,6 +196,7 @@ exports.listUsers = asyncHandler(async (req, res) => {
     total,
     page,
     pages: Math.max(1, Math.ceil(total / limit)),
+    counts,
   });
 });
 
@@ -271,6 +314,27 @@ exports.updateUser = asyncHandler(async (req, res) => {
     }
   }
 
+  // Payout address ကို ဒီ PATCH ကနေ ပြောင်းတဲ့လမ်း (owners page) လည်း ရှိတယ် —
+  // admin/owner account ဆို နှိပ်နေတဲ့ admin သူ့ login password နဲ့ အတည်ပြုခိုင်းတယ်။
+  const touchesPayoutAddress =
+    parsed.data.cryptoAddress !== undefined ||
+    parsed.data.cryptoQrUrl !== undefined;
+
+  if (touchesPayoutAddress && isPayoutAccount(user)) {
+    const confirmed = await confirmLoginPassword(
+      req.user._id,
+      parsed.data.password,
+    );
+
+    if (!confirmed.ok) {
+      console.log(
+        `[audit] admin=${req.user._id} payout address change rejected for user=${user._id} reason=${confirmed.message}`,
+      );
+
+      return res.status(confirmed.status).json({ message: confirmed.message });
+    }
+  }
+
   if (parsed.data.role !== undefined) user.role = parsed.data.role;
   if (parsed.data.status !== undefined) user.status = parsed.data.status;
   if (parsed.data.cryptoAddress !== undefined) {
@@ -338,6 +402,24 @@ exports.updateUserWalletAddress = asyncHandler(async (req, res) => {
     return res.status(403).json({
       message: "Admin wallet addresses must be changed from the admin's own account",
     });
+  }
+
+  // Owner ရဲ့ address ကို ပြောင်းတဲ့အခါ နှိပ်နေတဲ့ admin သူ့ login password ကို
+  // စစ်တယ် — JWT တစ်ခုခုနဲ့ panel ထဲ ဝင်လိုက်သူက owner ဆီသွားငွေ လိပ်စာကို
+  // အလွယ်တကူ လှည့်လို့မရအောင်။ role=user ဆို ဒီအခွင့် မလို (support လုပ်ငန်း)။
+  if (isPayoutAccount(user)) {
+    const confirmed = await confirmLoginPassword(
+      req.user._id,
+      parsed.data.password,
+    );
+
+    if (!confirmed.ok) {
+      console.log(
+        `[audit] admin=${req.user._id} wallet address change rejected for user=${user._id} reason=${confirmed.message}`,
+      );
+
+      return res.status(confirmed.status).json({ message: confirmed.message });
+    }
   }
 
   // Pending withdrawal ထဲက address ကို အခုပြောင်းရင် admin approve လုပ်တဲ့အခါ
