@@ -2,6 +2,7 @@ import { request } from "./client";
 import type {
   ApiAdminStats,
   ApiAdminUser,
+  ApiAnnouncement,
   ApiBoardRow,
   ApiDepositSummary,
   ApiPlan,
@@ -9,6 +10,7 @@ import type {
   ApiTask,
   ApiTransaction,
   ApiUser,
+  ApiUserCounts,
   MoneyValue,
 } from "./types";
 
@@ -76,10 +78,20 @@ export const api = {
     }),
 
   // ---- Wallet / deposits ----
-  updateOwnerCryptoAddress: (cryptoAddress: string, qrUrl?: string | null) =>
+  // Payout account (admin/owner) ရဲ့ လိပ်စာဖြစ်လို့ backend က login password
+  // တောင်းတယ် — မှားရင် 400, လိပ်စာ မထိဘူး။
+  updateOwnerCryptoAddress: (
+    cryptoAddress: string,
+    qrUrl?: string | null,
+    password?: string,
+  ) =>
     request<{ message: string }>("/auth/owner/crypto-address", {
       method: "PUT",
-      body: JSON.stringify({ cryptoAddress, qrUrl: qrUrl ?? null }),
+      body: JSON.stringify({
+        cryptoAddress,
+        qrUrl: qrUrl ?? null,
+        password,
+      }),
     }),
 
   depositInfo: () =>
@@ -149,6 +161,7 @@ export const api = {
       total: number;
       page: number;
       pages: number;
+      counts: ApiUserCounts;
     }>(`/admin/users${qs ? `?${qs}` : ""}`);
   },
 
@@ -160,6 +173,9 @@ export const api = {
       cryptoAddress?: string | null;
       cryptoQrUrl?: string | null;
       adminNote?: string | null;
+      // cryptoAddress/cryptoQrUrl ကို admin/owner account ပေါ် တင်တဲ့အခါ
+      // backend က ဤ password ကို စစ်တယ်။
+      password?: string;
     },
   ) =>
     request<{ user: ApiAdminUser }>(`/admin/users/${id}`, {
@@ -187,13 +203,18 @@ export const api = {
 
   // User/owner ရဲ့ withdraw ပို့ address။ Backend က TRC20 format စစ်ပြီး
   // pending withdrawal ရှိရင် 409 ပြန်တယ် — admin approve မလုပ်ခင် address
-  // ပြောင်းသွားရင် ငွေမှားနေမလို့။
-  adminUpdateUserWalletAddress: (id: string, walletAddress: string) =>
+  // ပြောင်းသွားရင် ငွေမှားနေမလို့။ Target က owner/admin ဆို admin သူ့
+  // login password လိုတယ် (role=user ဆို မလို)။
+  adminUpdateUserWalletAddress: (
+    id: string,
+    walletAddress: string,
+    password?: string,
+  ) =>
     request<{ message: string; walletAddress: string }>(
       `/admin/users/${encodeURIComponent(id)}/wallet-address`,
       {
         method: "PUT",
-        body: JSON.stringify({ walletAddress }),
+        body: JSON.stringify({ walletAddress, password }),
       },
     ),
 
@@ -390,6 +411,14 @@ export const api = {
       { method: "POST", body: JSON.stringify(body) },
     ),
 
+  // ထည့်ထားတဲ့ lucky tag ကို ပြန်ဖျက်တာ — user မသေး grab ထားတဲ့ order ပဲ
+  // backend က ခွင့်တယ်၊ ကျန်တာက 409 နဲ့ တားတယ်။
+  adminRemoveLuckyPosition: (id: string, orderNumber: number) =>
+    request<{ plan: ApiPlan }>(
+      `/orders/plans/${encodeURIComponent(id)}/lucky-positions/${orderNumber}`,
+      { method: "DELETE" },
+    ),
+
   adminListOwners: () => request<{ owners: ApiAdminUser[] }>("/auth/owners"),
 
   adminCreateOwner: (body: {
@@ -402,14 +431,20 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  adminCreateAnnouncement: (body: { title: string; content: string }) =>
-    request<{ announcement: unknown }>("/announcements", {
+  adminCreateAnnouncement: (body: {
+    title: string;
+    content: string;
+    recipientId?: string | null;
+  }) =>
+    request<{ announcement: ApiAnnouncement }>("/announcements", {
       method: "POST",
       body: JSON.stringify(body),
     }),
 
-  adminListAnnouncements: () =>
-    request<{ announcements: unknown[] }>("/announcements"),
+  adminListAnnouncements: (audience?: "all" | "personal") =>
+    request<{ announcements: ApiAnnouncement[] }>(
+      `/announcements${audience ? `?audience=${audience}` : ""}`,
+    ),
 
   // ---- Support ----
   startConversation: (input: { subject?: string }) =>

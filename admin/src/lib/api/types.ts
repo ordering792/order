@@ -114,6 +114,15 @@ export interface ApiAdminUser {
   adminNote?: string | null;
 }
 
+// Count tile လေးခု — role/search/owner scope ပေါ်မှာ တွက်ပြီး status filter ကို
+// မလိုက်နာဘူး၊ ဒါကြောင့် online + offline + burned == all အမြဲ တူတယ်။
+export interface ApiUserCounts {
+  all: number;
+  online: number;
+  offline: number;
+  burned: number;
+}
+
 // Order plan card board — user တစ်ယောက် + active plan (draft/generated)။
 // Completed round တွေ plan: null အဖြစ် ပြမယ် (row က Mongo မှာ ဆက်ရှိတယ်)။
 export interface ApiBoardRow {
@@ -137,6 +146,16 @@ export interface ApiAdminStats {
   totalPlans: number;
   generatedPlans: number;
   completedPlans: number;
+}
+
+export interface ApiAnnouncement {
+  _id: string;
+  title: string;
+  content: string;
+  createdAt?: string;
+  // userId = ရေးသားတဲ့ admin၊ recipientId = တစ်ယောက်ချင်း လက်ခံသူ (null = broadcast)။
+  userId?: { name?: string } | null;
+  recipientId?: { name?: string; phone?: string } | null;
 }
 
 export class ApiError extends Error {

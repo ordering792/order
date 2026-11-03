@@ -104,6 +104,51 @@ describe("admin api endpoints", () => {
       expect(init.method).toBe("PUT");
       expect(JSON.parse(init.body as string)).toEqual({ walletAddress: "Tabc" });
     });
+
+    it("adminUpdateUserWalletAddress carries the login password for payout rows", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ message: "ok" }));
+
+      await api.adminUpdateUserWalletAddress("u1", "Tabc", "admin123456");
+
+      const init = mockFetch.mock.calls[0][1] as RequestInit;
+      expect(JSON.parse(init.body as string)).toEqual({
+        walletAddress: "Tabc",
+        password: "admin123456",
+      });
+    });
+
+    it("adminUpdateUser sends the password next to an owner address", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ user: {} }));
+
+      await api.adminUpdateUser("o1", {
+        cryptoAddress: "Tabc",
+        password: "admin123456",
+      });
+
+      const init = mockFetch.mock.calls[0][1] as RequestInit;
+      expect(JSON.parse(init.body as string)).toEqual({
+        cryptoAddress: "Tabc",
+        password: "admin123456",
+      });
+    });
+
+    it("updateOwnerCryptoAddress PUTs the address with the password", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ message: "ok" }));
+
+      await api.updateOwnerCryptoAddress("Tabc", "https://img/qr.png", "admin123456");
+
+      const call = mockFetch.mock.calls[0];
+      expect(call[0]).toBe(
+        "http://localhost:5000/api/auth/owner/crypto-address"
+      );
+      const init = call[1] as RequestInit;
+      expect(init.method).toBe("PUT");
+      expect(JSON.parse(init.body as string)).toEqual({
+        cryptoAddress: "Tabc",
+        qrUrl: "https://img/qr.png",
+        password: "admin123456",
+      });
+    });
   });
 
   describe("admin transactions", () => {
@@ -312,6 +357,17 @@ describe("admin api endpoints", () => {
         requiredDeposit: "15.00",
         luckyCommission: "2.00",
       });
+    });
+
+    it("adminRemoveLuckyPosition DELETEs the tag by order number", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ plan: {} }));
+
+      await api.adminRemoveLuckyPosition("plan1", 7);
+
+      expect(mockFetch.mock.calls[0][0]).toContain(
+        "/orders/plans/plan1/lucky-positions/7"
+      );
+      expect((mockFetch.mock.calls[0][1] as RequestInit).method).toBe("DELETE");
     });
   });
 
