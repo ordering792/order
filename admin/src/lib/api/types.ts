@@ -105,7 +105,11 @@ export interface ApiAdminUser {
   createdAt?: string;
   ipAddress?: string | null;
   lastLoginAt?: string | null;
+  lastSeenAt?: string | null;
   lastDevice?: string | null;
+  // Backend က lastSeenAt (၅ မိနစ် window) ကနေ တွက်ပေးတဲ့ presence။ status က
+  // admin ရဲ့ Burn အလံသက်သက် — Online/Offline အတွက် မသုံးတော့ဘူး။
+  online?: boolean;
   // Admin သီးသန့် မှတ်စု — owner ဆီ API က ဘယ်တော့မှ မပို့ဘူး။
   adminNote?: string | null;
 }

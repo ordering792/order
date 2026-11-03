@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ApiAdminUser } from "@/lib/api";
 import { api } from "@/lib/api";
@@ -37,11 +37,13 @@ const BASE_ROW: ApiAdminUser = {
   invitationCode: "AB12CD",
   role: "user",
   status: "online",
+  online: true,
   balance: "125.50",
   walletAddress: "TQn9frBx7kQvZ2mYdLcR3sVe8uHhP4xk",
   createdAt: "2026-03-05T00:00:00.000Z",
   ipAddress: "203.0.113.42",
   lastLoginAt: "2026-10-30T00:00:00.000Z",
+  lastSeenAt: "2026-11-03T00:00:00.000Z",
   lastDevice: "Chrome · Windows",
 };
 
@@ -116,6 +118,54 @@ describe("Admin users page", () => {
     expect(
       screen.queryByTitle(new Date(BASE_ROW.lastLoginAt!).toLocaleString()),
     ).toBeNull();
+  });
+
+  describe("presence column", () => {
+    // STATUS filter ထဲက <option> တွေက badge အမည်တွေနဲ့ တစ်ပုံစံတည်းဖြစ်လို့
+    // query တွေကို row ထဲပဲ ကျဉ်းရမယ်။
+    async function renderRow(user: ApiAdminUser) {
+      listUsers([user]);
+      const code = await renderPage();
+      const tr = code.closest("tr");
+      if (!tr) throw new Error("user row is missing");
+
+      return within(tr);
+    }
+
+    it("reads the derived flag, not the stored status", async () => {
+      const cells = await renderRow(row({ status: "online", online: false }));
+
+      expect(cells.getByText("Offline")).toBeInTheDocument();
+      expect(cells.queryByText("Online")).toBeNull();
+    });
+
+    it("shows Online for a stale status=offline account the backend stamped", async () => {
+      const cells = await renderRow(row({ status: "offline", online: true }));
+
+      expect(cells.getByText("Online")).toBeInTheDocument();
+    });
+
+    it("keeps Burned ahead of presence", async () => {
+      const cells = await renderRow(row({ status: "burned", online: true }));
+
+      expect(cells.getByText("Burned")).toBeInTheDocument();
+      expect(cells.queryByText("Online")).toBeNull();
+    });
+
+    it("reveals the last seen time on hover", async () => {
+      const cells = await renderRow(row());
+
+      expect(cells.getByText("Online").getAttribute("title")).toMatch(
+        /^Last seen /,
+      );
+    });
+
+    it("has no tooltip for an account that was never seen", async () => {
+      const cells = await renderRow(row({ online: false, lastSeenAt: null }));
+
+      expect(cells.getByText("Offline")).toBeInTheDocument();
+      expect(cells.queryByTitle(/^Last seen /)).toBeNull();
+    });
   });
 
   it("never renders a stored password, only a reset control", async () => {

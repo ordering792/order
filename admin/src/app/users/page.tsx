@@ -181,12 +181,19 @@ export default function AdminUsersPage() {
         ? t("admin.role.owner")
         : t("admin.role.user");
 
-  const statusLabel = (value: ApiAdminUser["status"]) =>
-    value === "burned"
+  // Online/Offline က backend က lastSeenAt ကနေ တွက်ပေးတဲ့ `online` ဖြစ်တယ်။
+  // `status` field ကို Burn/Un-burn အလံအဖြစ်ပဲ သုံးတော့မယ်။
+  const statusLabel = (user: ApiAdminUser) =>
+    user.status === "burned"
       ? t("admin.status.burned")
-      : value === "online"
+      : user.online
         ? t("admin.status.online")
         : t("admin.status.offline");
+
+  const statusTitle = (user: ApiAdminUser) =>
+    user.status === "burned" || !user.lastSeenAt
+      ? undefined
+      : t("admin.status.lastSeen", { time: dateTime(user.lastSeenAt) });
 
   const columnCount = isAdmin ? 12 : 9;
 
@@ -355,15 +362,16 @@ export default function AdminUsersPage() {
                   </td>
                   <td className="px-4 py-3">
                     <span
+                      title={statusTitle(u)}
                       className={`rounded-md px-2 py-1 text-xs font-semibold ${
                         u.status === "burned"
                           ? "bg-red-50 text-red-600"
-                          : u.status === "online"
+                          : u.online
                             ? "bg-emerald-50 text-emerald-600"
                             : "bg-slate-100 text-slate-500"
                       }`}
                     >
-                      {statusLabel(u.status)}
+                      {statusLabel(u)}
                     </span>
                   </td>
                   <td className="px-4 py-3">

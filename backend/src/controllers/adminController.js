@@ -32,6 +32,17 @@ const orderBoardSchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(24),
 });
 
+// Presence window — Users list မှာ Online လို့ ပြဖို့ lastSeenAt နှိုင်းယှဉ်တဲ့ အချိန်။
+// auth middleware ရဲ့ ၆၀ စက္ကန့် throttle ထက် ကျယ်ရမယ် (မဟုတ်ရင် window အစောပိုင်း
+// မှာပဲ offline ပြသွားမယ်)။
+const ONLINE_WINDOW_MS = 5 * 60_000;
+
+function isOnline(user) {
+  if (user.status === "burned" || !user.lastSeenAt) return false;
+
+  return Date.now() - new Date(user.lastSeenAt).getTime() <= ONLINE_WINDOW_MS;
+}
+
 const listUsersSchema = z.object({
   search: z.string().max(100).optional(),
   role: z.enum(["user", "owner", "admin"]).optional(),
@@ -80,10 +91,30 @@ exports.listUsers = asyncHandler(async (req, res) => {
   }
 
   const { search, role, status, page, limit } = parsed.data;
+  const onlineAfter = new Date(Date.now() - ONLINE_WINDOW_MS);
   const filter = {};
+  const and = [];
 
   if (role) filter.role = role;
-  if (status) filter.status = status;
+
+  // Online/Offline ကို lastSeenAt ကနေ တွက်တယ် — status field ကို admin က
+  // Burn/Un-burn အလံအဖြစ်ပဲ သုံးတယ်။ Owner scoping က filter.$or ကို ကြာပြီးသား
+  // ဖြစ်လို့ ဒီ condition တွေက $and ထဲပဲ ဝင်ရမယ် (မဟုတ်ရင် ဖုံးသွားမယ်)။
+  if (status === "burned") {
+    filter.status = "burned";
+  } else if (status) {
+    and.push({ status: { $ne: "burned" } });
+    and.push(
+      status === "online"
+        ? { lastSeenAt: { $gte: onlineAfter } }
+        : {
+            $or: [
+              { lastSeenAt: null },
+              { lastSeenAt: { $lt: onlineAfter } },
+            ],
+          },
+    );
+  }
 
   // Owner က ကိုယ့် downline တွေကိုသာ မြင်ရမယ် (ကိုယ်တိုင်လည်း ပါဝင်မယ်)။
   if (req.user.role === "owner") {
@@ -92,16 +123,15 @@ exports.listUsers = asyncHandler(async (req, res) => {
 
   if (search) {
     const rx = new RegExp(escapeRegExp(search), "i");
-    filter.$and = [
-      ...(filter.$and ?? []),
-      { $or: [{ name: rx }, { phone: rx }, { invitationCode: rx }] },
-    ];
+    and.push({ $or: [{ name: rx }, { phone: rx }, { invitationCode: rx }] });
   }
+
+  if (and.length) filter.$and = and;
 
   // adminNote က admin ဆီပဲ သွားရမယ် — owner က ကိုယ့် downline ကို ဖတ်တဲ့အခါ
   // field ကို လုံးဝ မတောင်းဘူး (schema မှာ select: false ဖြစ်နေပြီးသား)။
   const selectedFields =
-    "name phone invitationCode role status balance walletAddress ownerId language cryptoAddress cryptoQrUrl createdAt ipAddress lastLoginAt lastUserAgent" +
+    "name phone invitationCode role status balance walletAddress ownerId language cryptoAddress cryptoQrUrl createdAt ipAddress lastLoginAt lastSeenAt lastUserAgent" +
     (req.user.role === "admin" ? " +adminNote" : "");
 
   const [users, total] = await Promise.all([
@@ -119,6 +149,7 @@ exports.listUsers = asyncHandler(async (req, res) => {
     users: users.map((user) => ({
       ...user,
       lastDevice: deviceInfo(user.lastUserAgent),
+      online: isOnline(user),
     })),
     total,
     page,

@@ -39,6 +39,14 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
 
+    // Presence အတွက် — login ကိုပဲ မစောင့်ဘူး ဘယ် auth လုပ်တဲ့ request မှာမဟုတ်
+    // ဖြစ်တယ် (auth middleware)။ status က admin ရဲ့ လက်ဖြင့်အလံ (burn) သက်သက်၊
+    // Online/Offline ကို ဒီ field ကနေ တွက်ပြသည်။
+    lastSeenAt: {
+      type: Date,
+      default: null,
+    },
+
     // Raw User-Agent ကိုပဲ သိမ်းမယ် — display label ကို admin list မှာ
     // deviceInfo() နဲ့ ချက်ချင်း တွက်တယ် (UA schema ပြောင်းရင် data မပျက်အောင်)။
     lastUserAgent: {

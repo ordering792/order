@@ -189,6 +189,145 @@ describe("Admin & owner endpoints", () => {
     });
   });
 
+  describe("Presence (lastSeenAt)", () => {
+    const MINUTE = 60_000;
+
+    async function listAs(admin, query = "") {
+      return request(app)
+        .get(`/api/admin/users${query}`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`);
+    }
+
+    it("derives online from a recent stamp, not from the stored status", async () => {
+      const admin = await createUser("admin");
+      const active = await createUser("user", {
+        status: "offline",
+        lastSeenAt: new Date(Date.now() - MINUTE),
+      });
+      const idle = await createUser("user", {
+        status: "online",
+        lastSeenAt: new Date(Date.now() - 20 * MINUTE),
+      });
+      const never = await createUser("user");
+
+      const res = await listAs(admin);
+
+      expect(res.status).toBe(200);
+      const byId = Object.fromEntries(
+        res.body.users.map((u) => [u._id.toString(), u]),
+      );
+      expect(byId[active._id.toString()].online).toBe(true);
+      expect(byId[idle._id.toString()].online).toBe(false);
+      expect(byId[never._id.toString()].online).toBe(false);
+      expect(byId[active._id.toString()].lastSeenAt).toBeTruthy();
+    });
+
+    it("filters status=online/offline by presence instead of the stored flag", async () => {
+      // admin ရဲ့ stamp ကို ကိုယ်တိုင်မရေးတော့ဘူး — auth middleware ရဲ့ write က
+      // fire-and-forget ဖြစ်လို့ list query နဲ့ ပြိုင်တယ်။ လက်မှတ်တင်ထားတဲ့
+      // တန်ဖိုးကို အစောင့်ထည့်ပြီး presence filter ကိုပဲ စစ်တယ်။
+      const admin = await createUser("admin", {
+        lastSeenAt: new Date(Date.now() - MINUTE),
+      });
+      const active = await createUser("user", {
+        status: "offline",
+        lastSeenAt: new Date(Date.now() - MINUTE),
+      });
+      const stale = await createUser("user", {
+        status: "online",
+        lastSeenAt: new Date(Date.now() - 20 * MINUTE),
+      });
+      const never = await createUser("user");
+
+      const online = await listAs(admin, "?status=online");
+      const offline = await listAs(admin, "?status=offline");
+
+      const onlineIds = online.body.users.map((u) => u._id.toString());
+      // status field က "offline" ဖြစ်ပေမဲ့ stamp အသစ်ကြောင့် online စာရင်းဝင်မယ်။
+      expect(onlineIds).toContain(active._id.toString());
+      expect(onlineIds).not.toContain(stale._id.toString());
+      expect(onlineIds).not.toContain(never._id.toString());
+      expect(onlineIds).toContain(admin._id.toString());
+      expect(offline.body.users.map((u) => u._id.toString())).toEqual(
+        expect.arrayContaining([stale._id.toString(), never._id.toString()]),
+      );
+      expect(offline.body.total).toBe(2);
+    });
+
+    it("keeps burned accounts out of the presence filters", async () => {
+      const admin = await createUser("admin");
+      const burned = await createUser("user", {
+        status: "burned",
+        lastSeenAt: new Date(Date.now() - MINUTE),
+      });
+
+      const online = await listAs(admin, "?status=online");
+      const burnedRes = await listAs(admin, "?status=burned");
+
+      expect(online.body.users.map((u) => u._id.toString())).not.toContain(
+        burned._id.toString(),
+      );
+      expect(burnedRes.body.users.map((u) => u._id.toString())).toEqual([
+        burned._id.toString(),
+      ]);
+    });
+
+    it("still scopes an owner's list when a status filter is applied", async () => {
+      // owner ရဲ့ stamp ကို အစောင့်ထည့်တယ် — auth middleware ရဲ့ write က
+      // fire-and-forget မို့ ဒီ list query နဲ့ ပြိုင်နေလို့။
+      const owner = await createUser("owner", {
+        lastSeenAt: new Date(Date.now() - MINUTE),
+      });
+      const mine = await createUser("user", {
+        ownerId: owner._id,
+        lastSeenAt: new Date(Date.now() - MINUTE),
+      });
+      const other = await createUser("user", {
+        lastSeenAt: new Date(Date.now() - MINUTE),
+      });
+
+      const res = await listAs(owner, "?status=online");
+
+      expect(res.status).toBe(200);
+      const ids = res.body.users.map((u) => u._id.toString());
+      expect(ids).toContain(mine._id.toString());
+      expect(ids).toContain(owner._id.toString());
+      // $or (downline scope) ကို status ရဲ့ $and clause က ဖုံးမသွားဘူး။
+      expect(ids).not.toContain(other._id.toString());
+    });
+
+    it("stamps lastSeenAt on an authenticated request", async () => {
+      const user = await createUser("user");
+
+      await request(app)
+        .get("/api/auth/me")
+        .set("Authorization", `Bearer ${makeToken(user)}`);
+
+      // The middleware fires the write without awaiting it.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      const stamped = await User.findById(user._id).select("lastSeenAt");
+      expect(stamped.lastSeenAt).toBeInstanceOf(Date);
+      expect(Math.abs(Date.now() - stamped.lastSeenAt.getTime())).toBeLessThan(
+        5 * MINUTE,
+      );
+    });
+
+    it("leaves the stamp alone inside the throttle window", async () => {
+      const seenAt = new Date(Date.now() - 5000);
+      const user = await createUser("user", { lastSeenAt: seenAt });
+
+      await request(app)
+        .get("/api/auth/me")
+        .set("Authorization", `Bearer ${makeToken(user)}`);
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      const kept = await User.findById(user._id).select("lastSeenAt");
+      expect(kept.lastSeenAt.getTime()).toBe(seenAt.getTime());
+    });
+  });
+
   describe("PATCH /api/admin/users/:id", () => {
     it("admin can change a user role", async () => {
       const admin = await createUser("admin");
