@@ -19,6 +19,7 @@ export default function AdminOwnersPage() {
     id: string;
     address: string;
     qrUrl: string;
+    password: string;
   } | null>(null);
   const [savingWalletId, setSavingWalletId] = useState<string | null>(null);
 
@@ -55,6 +56,7 @@ export default function AdminOwnersPage() {
       id: owner._id,
       address: owner.cryptoAddress ?? "",
       qrUrl: owner.cryptoQrUrl ?? "",
+      password: "",
     });
   };
 
@@ -66,9 +68,12 @@ export default function AdminOwnersPage() {
     setSavingWalletId(walletEdit.id);
 
     try {
+      // Owner ဆီသွားငွေ လိပ်စာ ဖြစ်လို့ နှိပ်နေတဲ့ admin သူ့ login password ကို
+      // backend က စစ်တယ် — မှားရင် 400 ပြီး owner ရဲ့ လိပ်စာ မထိဘူး။
       await api.adminUpdateUser(walletEdit.id, {
         cryptoAddress: walletEdit.address.trim(),
         cryptoQrUrl: walletEdit.qrUrl || null,
+        password: walletEdit.password,
       });
       setWalletEdit(null);
       setNotice(t("admin.wallet.saved"));
@@ -159,8 +164,14 @@ export default function AdminOwnersPage() {
           <WalletEditor
             address={walletEdit.address}
             qrUrl={walletEdit.qrUrl}
+            password={walletEdit.password}
             saving={savingWalletId === walletEdit.id}
             saveLabel={t("admin.owners.saveWallet")}
+            onPasswordChange={(value) =>
+              setWalletEdit((prev) =>
+                prev ? { ...prev, password: value } : prev,
+              )
+            }
             onChange={(patch) =>
               setWalletEdit((prev) =>
                 prev

@@ -7,7 +7,9 @@ import { useT } from "@/lib/i18n";
 interface WalletEditorProps {
   address: string;
   qrUrl: string;
+  password: string;
   onChange: (patch: { address?: string; qrUrl?: string }) => void;
+  onPasswordChange: (value: string) => void;
   onSave: () => void;
   saving?: boolean;
   saveLabel?: string;
@@ -16,10 +18,14 @@ interface WalletEditorProps {
 
 // Admin / Owner ရဲ့ payout address + QR code သတ်မှတ်တဲ့ form ကို
 // /wallet နဲ့ /owners နှစ်ခုလုံးမှာ ပြန်သုံးနေသော shared component။
+// Payout လိပ်စာ ညှိတဲ့နေရာတိုင်းမှာ login password တောင်းတယ် — backend က
+// မစစ်ခင်ဘူး၊ ဒီ field က UX သီးသန့်။
 export default function WalletEditor({
   address,
   qrUrl,
+  password,
   onChange,
+  onPasswordChange,
   onSave,
   saving = false,
   saveLabel,
@@ -74,6 +80,21 @@ export default function WalletEditor({
           </span>
         </label>
 
+        <label className="block text-xs font-semibold text-slate-500">
+          {t("admin.wallet.password")}
+          <input
+            data-testid="wallet-password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => onPasswordChange(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal text-slate-700 outline-none focus:border-[#ff6600]"
+          />
+          <span className="mt-1 block text-[11px] font-normal text-slate-400">
+            {t("admin.wallet.passwordHint")}
+          </span>
+        </label>
+
         <div className="flex flex-wrap items-center gap-2">
           <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-50">
             <Camera size={14} />
@@ -98,7 +119,9 @@ export default function WalletEditor({
 
           <button
             onClick={onSave}
-            disabled={saving || address.trim().length < 10}
+            disabled={
+              saving || address.trim().length < 10 || password.trim() === ""
+            }
             className="rounded-lg bg-[#ff6600] px-4 py-2 text-xs font-bold text-white transition hover:bg-orange-600 disabled:opacity-50"
           >
             {saveLabel ?? t("admin.wallet.save")}

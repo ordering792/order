@@ -11,27 +11,40 @@ const TRON_ADDRESS = /^T[1-9A-HJ-NP-Za-km-z]{33}$/;
 interface WalletAddressModalProps {
   userName: string;
   currentAddress: string | null;
-  onSubmit: (walletAddress: string) => Promise<void>;
+  // Owner/admin account ရဲ့ payout လိပ်စာကို backend က login password နဲ့ စစ်တယ်။
+  // role=user ဆို false — support လုပ်ငန်းကို မထီလှှောက်တာ။
+  requiresPassword: boolean;
+  onSubmit: (walletAddress: string, password: string) => Promise<void>;
   onClose: () => void;
 }
 
 export default function WalletAddressModal({
   userName,
   currentAddress,
+  requiresPassword,
   onSubmit,
   onClose,
 }: WalletAddressModalProps) {
   const t = useT();
   const [address, setAddress] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
   const value = address.trim();
-  const canSubmit = !saving && TRON_ADDRESS.test(value);
+  const canSubmit =
+    !saving &&
+    TRON_ADDRESS.test(value) &&
+    (!requiresPassword || password.trim() !== "");
 
   const submit = async () => {
     if (!TRON_ADDRESS.test(value)) {
       setError(t("admin.users.walletInvalid"));
+      return;
+    }
+
+    if (requiresPassword && password.trim() === "") {
+      setError(t("admin.wallet.passwordRequired"));
       return;
     }
 
@@ -44,9 +57,10 @@ export default function WalletAddressModal({
     setSaving(true);
 
     try {
-      await onSubmit(value);
+      await onSubmit(value, password);
     } catch (err) {
       // Pending withdrawal 409 လို server က ပြန်တဲ့ message ကို ဒီမှာပဲ ပြတယ်။
+      // Password မှားတဲ့ 400 လည်း ဒီမှာပဲ — ရိုက်ထားတာ မပျောက်ဘူး ပြန်ရိုက်ရအောင်။
       setError(err instanceof Error ? err.message : "Failed");
       setSaving(false);
     }
@@ -89,6 +103,24 @@ export default function WalletAddressModal({
             {t("admin.users.walletHint")}
           </span>
         </label>
+
+        {requiresPassword && (
+          <label className="mt-3 block text-xs font-semibold text-slate-500">
+            {t("admin.wallet.password")}
+            <input
+              data-testid="wallet-password-input"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              maxLength={100}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#ff6600]"
+            />
+            <span className="mt-1 block text-[11px] font-normal text-slate-400">
+              {t("admin.wallet.passwordHint")}
+            </span>
+          </label>
+        )}
 
         {error && (
           <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">

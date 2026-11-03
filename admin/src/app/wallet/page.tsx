@@ -12,6 +12,7 @@ export default function AdminWalletPage() {
   const { user } = useAuth();
   const [address, setAddress] = useState("");
   const [qrUrl, setQrUrl] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -38,7 +39,14 @@ export default function AdminWalletPage() {
     setSaving(true);
 
     try {
-      await api.updateOwnerCryptoAddress(address.trim(), qrUrl || null);
+      await api.updateOwnerCryptoAddress(
+        address.trim(),
+        qrUrl || null,
+        password,
+      );
+      // Password ကို မှတ်ထားတယ် — အောင်မြင်တဲ့အခါ ဖျက်လိုက်တယ်၊ မအောင်မြင်ရင်
+      // admin က ဒုတိယအကြိမ် မရိုက်ရအောင် ထားထားတယ်။
+      setPassword("");
       setNotice(t("admin.wallet.saved"));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed");
@@ -76,11 +84,13 @@ export default function AdminWalletPage() {
         <WalletEditor
           address={address}
           qrUrl={qrUrl}
+          password={password}
           saving={saving}
           onChange={(patch) => {
             if (patch.address !== undefined) setAddress(patch.address);
             if (patch.qrUrl !== undefined) setQrUrl(patch.qrUrl);
           }}
+          onPasswordChange={setPassword}
           onSave={save}
         />
       )}

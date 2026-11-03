@@ -10,12 +10,17 @@ const {
 } = require("../utils/walletAddress");
 const {
   hasPendingWithdrawal,
+  isPayoutAccount,
+  confirmLoginPassword,
   PENDING_WITHDRAWAL_MESSAGE,
+  PAYOUT_ACCOUNT_MESSAGE,
 } = require("../services/walletGuard");
 
 const cryptoAddressSchema = z.object({
   cryptoAddress: z.string().min(10).max(100),
   qrUrl: z.string().max(2000).nullish(),
+  // Payout address ပြောင်းတဲ့သူ ကိုယ်တိုင်ဆိုတာ အတည်ပြ — login password။
+  password: z.string().max(100).optional(),
 });
 
 const walletAddressSchema = z.object({
@@ -31,6 +36,23 @@ exports.updateOwnerCryptoAddress = asyncHandler(async (req, res) => {
       message: "Validation failed",
       errors: parsed.error.issues,
     });
+  }
+
+  // ဒီ endpoint က payout account (admin/owner) ရဲ့ လိပ်စာကို ပြောင်းတာ —
+  // token ခိုးထားတဲ့သူ address လှည့်လိုက်ရင် ပိုက်ဆံ ဆုံးရှုံးနိုင်လို့ password စစ်တယ်။
+  if (isPayoutAccount(req.user)) {
+    const confirmed = await confirmLoginPassword(
+      req.user._id,
+      parsed.data.password,
+    );
+
+    if (!confirmed.ok) {
+      console.log(
+        `[audit] payout address change rejected account=${req.user._id} reason=${confirmed.message}`,
+      );
+
+      return res.status(confirmed.status).json({ message: confirmed.message });
+    }
   }
 
   await User.findByIdAndUpdate(req.user._id, {
@@ -153,6 +175,12 @@ exports.updateWalletAddress = asyncHandler(async (req, res) => {
       message: "Validation failed",
       errors: parsed.error.issues,
     });
+  }
+
+  // ဒီ endpoint မှာ password field မပါလို့ admin/owner account တွေကို
+  // ချွန်ပေးတယ် — မဟုတ်ရင် admin panel ရဲ့ gate ကို ဒီလမ်းနဲ့ လှော်ခတ်လို့ရမယ်။
+  if (isPayoutAccount(req.user)) {
+    return res.status(403).json({ message: PAYOUT_ACCOUNT_MESSAGE });
   }
 
   const walletAddress = normalizeWalletAddress(parsed.data.walletAddress);

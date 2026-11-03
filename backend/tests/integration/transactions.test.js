@@ -717,12 +717,52 @@ describe("Transaction endpoints", () => {
       const res = await request(app)
         .put("/api/auth/owner/crypto-address")
         .set("Authorization", `Bearer ${makeToken(owner)}`)
-        .send({ cryptoAddress: "TTrc20ExampleAddress123456789" });
+        .send({
+          cryptoAddress: "TTrc20ExampleAddress123456789",
+          password: "password123",
+        });
 
       expect(res.status).toBe(200);
 
       const fresh = await User.findById(owner._id);
       expect(fresh.cryptoAddress).toBe("TTrc20ExampleAddress123456789");
+    });
+
+    it("refuses to move the payout address without the login password", async () => {
+      const owner = await createUser("owner", {
+        cryptoAddress: "TOldOwnerPayoutAddress111111111111",
+      });
+
+      const res = await request(app)
+        .put("/api/auth/owner/crypto-address")
+        .set("Authorization", `Bearer ${makeToken(owner)}`)
+        .send({ cryptoAddress: "TAttackerPayoutAddress222222222222" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/password is required/i);
+
+      const fresh = await User.findById(owner._id);
+      expect(fresh.cryptoAddress).toBe("TOldOwnerPayoutAddress111111111111");
+    });
+
+    it("refuses a wrong password and leaves the address alone", async () => {
+      const owner = await createUser("owner", {
+        cryptoAddress: "TOldOwnerPayoutAddress111111111111",
+      });
+
+      const res = await request(app)
+        .put("/api/auth/owner/crypto-address")
+        .set("Authorization", `Bearer ${makeToken(owner)}`)
+        .send({
+          cryptoAddress: "TAttackerPayoutAddress222222222222",
+          password: "wrongpassword",
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toBe("Incorrect password");
+
+      const fresh = await User.findById(owner._id);
+      expect(fresh.cryptoAddress).toBe("TOldOwnerPayoutAddress111111111111");
     });
 
     it("rejects an invalid crypto address payload", async () => {
@@ -816,6 +856,28 @@ describe("Transaction endpoints", () => {
       const fresh = await User.findById(user._id);
       expect(fresh.walletAddress).toBe(TRON_ADDRESS);
     });
+
+    // Admin panel က ဤ endpoint မှတဆင့် gate ကို လှော်ခတ်လို့ မရအောင် payout
+    // account တွေကို ဒီလမ်းပိတ်ထားတယ် (admin panel က password တောင်းတယ်)။
+    it.each(["owner", "admin"])(
+      "sends a %s payout address change to the admin panel instead",
+      async (role) => {
+        const account = await createUser(role, {
+          walletAddress: "TOldPayoutAddressPlaceholderXXX",
+        });
+
+        const res = await request(app)
+          .put("/api/auth/wallet-address")
+          .set("Authorization", `Bearer ${makeToken(account)}`)
+          .send({ walletAddress: TRON_ADDRESS });
+
+        expect(res.status).toBe(403);
+        expect(res.body.message).toMatch(/admin panel/i);
+
+        const untouched = await User.findById(account._id);
+        expect(untouched.walletAddress).toBe("TOldPayoutAddressPlaceholderXXX");
+      },
+    );
 
     it("rejects an address that is not a TRON (TRC20) address", async () => {
       const user = await createUser();
