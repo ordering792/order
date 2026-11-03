@@ -134,7 +134,8 @@ exports.match = asyncHandler(async (req, res) => {
   const { plan } = await countSummary(req.user._id);
 
   if (!plan) {
-    throw httpError(404, "No order plan found — deposit first");
+    // Plan ကို admin က သတ်မှတ်တယ် — deposit က အစောက် မလိုတော့ဘူး။
+    throw httpError(404, "No order plan found — ask an administrator to assign orders");
   }
 
   if (plan.status === "completed") {

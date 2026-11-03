@@ -58,22 +58,10 @@ async function resolveBaseCents(plan, depositTransactionId, session) {
 }
 
 async function balanceBaseCents(plan, session) {
-  // Lucky order ပါလဲ balance base နဲ့ လုပ်လို့ရတယ် — lucky order ရောက်တဲ့အခါ
-  // completion မှာ accepted deposit တွေပေါင်းလဒ် (ခွဲသွင်းထားတာပါ) ကို
-  // claim လုပ်တာက အတိုင်းအတာ ထားမယ် (luckyDepositService)။
-  const hasDeposited = await Transaction.exists({
-    userId: plan.userId,
-    type: "deposit",
-    status: "accepted",
-  }).session(session);
-
-  if (!hasDeposited) {
-    throw httpError(
-      400,
-      "User must complete a first deposit before balance-based orders",
-    );
-  }
-
+  // deposit သက်သေ မလိုတော့ဘူး — admin က Users page ကနေ balance ကို credit
+  // ရိုက်ရုံနဲ့ plan generate လို့ ရတယ်။ base က balance ဖြစ်တဲ့အတွက် balance = 0
+  // ဆိုရင် price band က [0, 0] ဖြစ်သွားလို့ product ရွေးလို့ မရတော့ဘူး — ဒါကြောင့်
+  // အနည်းဆုံး 0.01 တော့ လိုအပ်တယ်။
   const user = await User.findById(plan.userId).session(session);
 
   if (!user) {
@@ -85,7 +73,7 @@ async function balanceBaseCents(plan, session) {
   if (balanceCents < 1n) {
     throw httpError(
       400,
-      "User balance is empty — an accepted deposit is required",
+      "User balance is empty — an accepted deposit or a balance credit is required",
     );
   }
 

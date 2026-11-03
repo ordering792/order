@@ -1117,7 +1117,7 @@ describe("Balance-based generation (no deposit transaction)", () => {
     expect(parseFloat(updated.currentBase.toString())).toBeCloseTo(300, 2);
   });
 
-  it("rejects a user who has never deposited", async () => {
+  it("generates from a credited balance even with no deposit history", async () => {
     const admin = await createUser("admin");
     const user = await createUser("user", { balance: "300.00" });
     await seedProducts([240, 250, 260, 270, 280, 290, 300]);
@@ -1131,8 +1131,74 @@ describe("Balance-based generation (no deposit transaction)", () => {
       .set("Authorization", `Bearer ${makeToken(admin)}`)
       .send({});
 
-    expect(res.status).toBe(400);
-    expect(res.body.message).toContain("first deposit");
+    expect(res.status).toBe(201);
+
+    const tasks = await Task.find({ userId: user._id }).sort({
+      orderNumber: 1,
+    });
+    expect(tasks).toHaveLength(5);
+
+    for (const task of tasks) {
+      const price = parseFloat(task.price.toString());
+      expect(price).toBeGreaterThanOrEqual(240);
+      expect(price).toBeLessThanOrEqual(300);
+    }
+
+    const updated = await OrderPlan.findById(plan._id);
+    expect(updated.initialDepositTxId).toBeNull();
+    expect(parseFloat(updated.currentBase.toString())).toBeCloseTo(300, 2);
+  });
+
+  it("holds a lucky order in a no-deposit round until its deposit arrives", async () => {
+    const admin = await createUser("admin");
+    const user = await createUser("user", { balance: "300.00" });
+    await seedProducts([240, 250, 260, 270, 280, 290, 300]);
+
+    const plan = await createPlan(admin, user._id.toString(), {
+      totalOrders: 2,
+      body: {
+        luckyPositions: [
+          { orderNumber: 2, requiredDeposit: "100.00", luckyCommission: "5.00" },
+        ],
+      },
+    });
+
+    const gen = await request(app)
+      .post(`/api/orders/plans/${plan._id}/generate`)
+      .set("Authorization", `Bearer ${makeToken(admin)}`)
+      .send({});
+
+    expect(gen.status).toBe(201);
+
+    const [first, lucky] = await planTasks(user._id);
+    expect(lucky.isLuckyOrder).toBe(true);
+
+    expect((await completeTask(user, first._id)).status).toBe(200);
+
+    // deposit မရှိသေး — balance credit သက်သက်နဲ့ lucky order ကို မဖွင့်ဘူး။
+    const blocked = await completeTask(user, lucky._id);
+    expect(blocked.status).toBe(400);
+    expect(blocked.body.message).toMatch(/short by 100\.00/);
+
+    // assignedAt ပြီးမှ တင်တဲ့ accepted deposit က lucky ကို ဖွင့်တယ်။
+    const luckyDeposit = await makeDeposit(user._id, "100.00");
+
+    const done = await completeTask(user, lucky._id);
+    expect(done.status).toBe(200);
+
+    const claimed = await Transaction.findById(luckyDeposit._id);
+    expect(claimed.allocation?.taskId?.toString()).toBe(String(lucky._id));
+
+    const after = await User.findById(user._id);
+    const expected =
+      300 +
+      parseFloat(first.commission.toString()) +
+      parseFloat(lucky.commission.toString());
+    expect(parseFloat(after.balance.toString())).toBeCloseTo(expected, 2);
+
+    const updatedPlan = await OrderPlan.findById(plan._id);
+    expect(parseFloat(updatedPlan.currentBase.toString())).toBeCloseTo(400, 2);
+    expect(updatedPlan.status).toBe("completed");
   });
 
   it("rejects a user with an empty balance", async () => {
