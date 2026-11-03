@@ -48,7 +48,15 @@ const schema = new mongoose.Schema(
       default: null,
     },
 
-    // Set when an accepted deposit is claimed to pay a lucky order deposit.
+    // Lucky order တွေအတွက် သုံးပြီးသားပမာဏ။ amount − appliedAmount က
+    // နောက် lucky order တစ်ခုအတွက် ကျန်နေသေးတဲ့ deposit ဖြစ်တယ်။
+    appliedAmount: {
+      type: mongoose.Schema.Types.Decimal128,
+      default: "0.00",
+    },
+
+    // Set when part or all of an accepted deposit is claimed to pay a lucky
+    // order deposit.
     allocation: {
       type: new mongoose.Schema(
         {

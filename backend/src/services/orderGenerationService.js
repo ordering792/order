@@ -59,8 +59,8 @@ async function resolveBaseCents(plan, depositTransactionId, session) {
 
 async function balanceBaseCents(plan, session) {
   // Lucky order ပါလဲ balance base နဲ့ လုပ်လို့ရတယ် — lucky order ရောက်တဲ့အခါ
-  // completion မှာ requiredDeposit အတိအကျနဲ့တူတဲ့ deposit transaction ကို
-  // claim လုပ်တာက အတိုင်းအတာ ထားမယ် (taskCompletionService)။
+  // completion မှာ accepted deposit တွေပေါင်းလဒ် (ခွဲသွင်းထားတာပါ) ကို
+  // claim လုပ်တာက အတိုင်းအတာ ထားမယ် (luckyDepositService)။
   const hasDeposited = await Transaction.exists({
     userId: plan.userId,
     type: "deposit",

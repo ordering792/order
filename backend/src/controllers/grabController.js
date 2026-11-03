@@ -1,7 +1,6 @@
 const mongoose = require("mongoose");
 const { z } = require("zod");
 const Task = require("../models/Task");
-const Transaction = require("../models/Transaction");
 const User = require("../models/User");
 const WalletLedger = require("../models/WalletLedger");
 const asyncHandler = require("../utils/asyncHandler");
@@ -9,6 +8,7 @@ const { toCents, decimal } = require("../utils/money");
 const { httpError } = require("../utils/httpError");
 const { COMMISSION_BASIS_POINTS } = require("../services/orderSelection");
 const { getMyPlan } = require("../services/orderPlanService");
+const { availableDepositCents } = require("../services/luckyDepositService");
 const { emitToUser } = require("../socket");
 const { WALLET_NOTES } = require("../constants/walletNotes");
 
@@ -175,24 +175,22 @@ exports.match = asyncHandler(async (req, res) => {
 
   const depositCents = toCents(detail.requireDeposit);
 
-  // Lucky deposit ကို completeTask က accepted ဖြစ်ပြီး မရောင်းရသေးတဲ့
-  // requiredDeposit တိတိကျကျ တူ deposit tx တစ်ခုနဲ့ပဲ ဖြည်တယ် — balance
-  // လုံလုံရုံနဲ့ မဖွင့်နိုင်ဘူး။ ဒါကြောင့် preflight က claimability ကို စစ်မယ်။
+  // Lucky deposit ကို completeTask က order ကျတဲ့အချိန် (assignedAt) နောက်မှာ
+  // တင်ပြီး accepted ဖြစ်တဲ့ deposit တွေပေါင်းလဒ်နဲ့ ဖည့်တယ် (ခွဲသွင်းလို့ ရ) —
+  // balance လုံလုံရုံနဲ့တော့ မဖွင့်နိုင်ဘူး။ ဒါကြောင့် preflight က
+  // ကျန်နေသေးတဲ့ပမာဏကို ပြတယ်။
   let needsDeposit = false;
   let shortByCents = 0n;
 
   if (depositCents > 0n) {
-    const claimable = await Transaction.exists({
+    const available = await availableDepositCents({
       userId: req.user._id,
-      type: "deposit",
-      status: "accepted",
-      amount: decimal(depositCents),
-      allocation: null,
-      _id: { $ne: plan.initialDepositTxId },
+      targetCents: depositCents,
+      notBefore: task.assignedAt,
     });
 
-    needsDeposit = !claimable;
-    shortByCents = claimable ? 0n : depositCents;
+    needsDeposit = available < depositCents;
+    shortByCents = needsDeposit ? depositCents - available : 0n;
   }
 
   res.json({

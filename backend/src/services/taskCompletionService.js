@@ -4,8 +4,8 @@ const User = require("../models/User");
 const WalletLedger = require("../models/WalletLedger");
 const LuckyOrderConfig = require("../models/LuckyOrderConfig");
 const OrderPlan = require("../models/OrderPlan");
-const Transaction = require("../models/Transaction");
 const { toCents, fromCents, decimal } = require("../utils/money");
+const { claimLuckyDeposit } = require("./luckyDepositService");
 const { httpError } = require("../utils/httpError");
 const { DEFAULT_INVITATION_CODE } = require("../config/invitation");
 const { emitToAdmins, emitToUser } = require("../socket");
@@ -102,9 +102,10 @@ async function loadActiveUser(userId, session) {
   return user;
 }
 
-// Lucky order ရဲ့ deposit ကို ကိုင်တွယ်တယ်။ Plan ပါရင် accepted deposit
-// transaction ကို claim လုပ်ပြီး plan base ကို တိုးတယ် (balance ကနေ မဖြတ်ဘူး)။
-// Plan မပါတဲ့ legacy lucky order ကတော့ balance ကနေ ဖြတ်တယ်။
+// Lucky order ရဲ့ deposit ကို ကိုင်တွယ်တယ်။ Plan ပါရင် order ကျပြီးမှ (assignedAt
+// နောက်မှ) တင်တဲ့ accepted deposit တွေကို စုပြီး claim လုပ်ပြီး plan base ကို
+// တိုးတယ် (balance ကနေ မဖြတ်ဘူး)။ Plan မပါတဲ့ legacy lucky order ကတော့
+// balance ကနေ ဖြတ်တယ်။
 async function settleLuckyDeposit({ plan, task, user, balance, session }) {
   if (plan && task.isLuckyOrder) {
     const luckyPosition = plan.luckyPositions.find(
@@ -118,29 +119,13 @@ async function settleLuckyDeposit({ plan, task, user, balance, session }) {
     const required = toCents(luckyPosition.requiredDeposit.toString());
 
     if (required > 0n) {
-      const claimed = await Transaction.findOneAndUpdate(
-        {
-          userId: user._id,
-          type: "deposit",
-          status: "accepted",
-          amount: decimal(required),
-          allocation: null,
-          _id: { $ne: plan.initialDepositTxId },
-        },
-        {
-          $set: {
-            allocation: { taskId: task._id, allocatedAt: new Date() },
-          },
-        },
-        { session, returnDocument: "after" },
-      );
-
-      if (!claimed) {
-        throw httpError(
-          400,
-          `An accepted deposit of exactly ${fromCents(required)} is required for this lucky order`,
-        );
-      }
+      await claimLuckyDeposit({
+        userId: user._id,
+        taskId: task._id,
+        requiredCents: required,
+        notBefore: task.assignedAt,
+        session,
+      });
     }
 
     plan.currentBase = decimal(

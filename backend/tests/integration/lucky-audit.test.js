@@ -369,7 +369,7 @@ describe("Lucky order + order generation audit", () => {
 
     const blocked = await complete(user, lucky.id);
     expect(blocked.status).toBe(400);
-    expect(blocked.body.message).toMatch(/exactly 250\.00 is required/);
+    expect(blocked.body.message).toMatch(/short by 250\.00/);
 
     // the plan's own initial deposit must never be reused as the lucky deposit
     const planDoc = await OrderPlan.findById(plan._id);
@@ -381,7 +381,7 @@ describe("Lucky order + order generation audit", () => {
       allocation: null,
     });
     expect(planDoc.initialDepositTxId).toBeDefined();
-    expect(reusable).toBe(1); // the 1000 deposit is still unallocated, 250 != 1000
+    expect(reusable).toBe(1); // the 1000 base is untouched, but it funds the round, not a lucky order
 
     // user pays the exact lucky deposit
     const luckyDeposit = await accept(admin, await deposit(user, "250.00"));
@@ -433,19 +433,20 @@ describe("Lucky order + order generation audit", () => {
     const initialDeposit = await accept(admin, await deposit(user, "1000.00"));
     await generate(admin, plan._id, initialDeposit._id.toString());
 
-    // one single 250 deposit for two 250 requirements
-    await accept(admin, await deposit(user, "250.00"));
-
     const first = await match(user);
     expect(first.body.order.orderNumber).toBe(1);
     expect(first.body.order.isLuckyOrder).toBe(true);
+
+    // order 1 ကျပြီးမှ 250 သွင်း — order 2 အတွက် ဒီငွေက အချိန်အရ အရင်ဖြစ်သွားလို့ မရ
+    await accept(admin, await deposit(user, "250.00"));
     expect((await complete(user, first.body.order.id)).status).toBe(200);
 
     const second = await match(user);
     expect(second.body.order.orderNumber).toBe(2);
+    expect(second.body.needsDeposit).toBe(true);
     const starved = await complete(user, second.body.order.id);
     expect(starved.status).toBe(400);
-    expect(starved.body.message).toMatch(/exactly 250\.00 is required/);
+    expect(starved.body.message).toMatch(/short by 250\.00/);
 
     // the claimed deposit cannot be claimed twice
     const claimedOnce = await Transaction.countDocuments({
@@ -612,7 +613,7 @@ describe("Lucky order + order generation audit", () => {
     expect(cents(r2.body.order.requireDeposit)).toBe(20000n);
     const blocked2 = await complete(user, r2.body.order.id);
     expect(blocked2.status).toBe(400);
-    expect(blocked2.body.message).toMatch(/exactly 200\.00/);
+    expect(blocked2.body.message).toMatch(/short by 200\.00/);
 
     const afterMatch = await request(app)
       .get("/api/tasks/orders")
@@ -655,6 +656,180 @@ describe("Lucky order + order generation audit", () => {
     expect(third.body.needsDeposit).toBe(false);
     expect(cents(third.body.shortBy)).toBe(0n);
     expect((await complete(user, third.body.order.id)).status).toBe(200);
+  });
+});
+
+// ငွေခွဲသွင်းတဲ့ user — lucky deposit တစ်ခုကို lucky order ကျပြီးမှ ထပ်သွင်းတဲ့
+// accepted deposit တွေပေါင်းလဒ်နဲ့ ဖည့်တယ်။ (order ကျခင်က ငွေ မရေတွက်ဘူး)
+describe("Lucky order split deposits", () => {
+  async function luckySetup(admin, user, positions) {
+    await seedProducts(CATALOG);
+    const plan = await createPlan(admin, user._id.toString(), 3, positions);
+    await generate(admin, plan._id, await acceptDeposit(admin, user, "1000.00"));
+    return plan;
+  }
+
+  it("pays a 250.00 lucky deposit with a 100.00 and a 150.00 deposit", async () => {
+    const admin = await makeUser("admin");
+    const user = await makeUser();
+    const plan = await luckySetup(admin, user, [
+      { orderNumber: 1, requiredDeposit: "250.00", luckyCommission: "60.00" },
+    ]);
+
+    // order ကျမှ (assign ဖြစ်မှ) deposit သွင်းခွင့်ရ — fence က assignedAt ကို ကြည့်တယ်
+    const matched = await match(user);
+    expect(matched.status).toBe(200);
+    expect(matched.body.order.isLuckyOrder).toBe(true);
+    expect(matched.body.needsDeposit).toBe(true);
+    expect(cents(matched.body.shortBy)).toBe(25000n);
+
+    const first = await accept(admin, await deposit(user, "100.00"));
+    const second = await accept(admin, await deposit(user, "150.00"));
+
+    const ready = await match(user);
+    expect(ready.body.order.id).toBe(matched.body.order.id);
+    expect(ready.body.needsDeposit).toBe(false);
+    expect(cents(ready.body.shortBy)).toBe(0n);
+
+    expect((await complete(user, ready.body.order.id)).status).toBe(200);
+
+    const txFirst = await Transaction.findById(first._id);
+    const txSecond = await Transaction.findById(second._id);
+    expect(cents(txFirst.appliedAmount)).toBe(10000n);
+    expect(cents(txSecond.appliedAmount)).toBe(15000n);
+    expect(txFirst.allocation?.taskId?.toString()).toBe(ready.body.order.id);
+    expect(txSecond.allocation?.taskId?.toString()).toBe(ready.body.order.id);
+
+    // the round base grew by exactly the required deposit, and the plan path
+    // still never debits the user's balance
+    expect(cents((await OrderPlan.findById(plan._id)).currentBase)).toBe(125000n);
+    expect(
+      await WalletLedger.countDocuments({
+        userId: user._id,
+        note: "Lucky order deposit",
+      }),
+    ).toBe(0);
+  });
+
+  it("asks the preflight for the remainder, and ignores unaccepted deposits", async () => {
+    const admin = await makeUser("admin");
+    const user = await makeUser();
+    await luckySetup(admin, user, [
+      { orderNumber: 1, requiredDeposit: "250.00", luckyCommission: "60.00" },
+    ]);
+
+    const before = await match(user);
+    expect(before.body.needsDeposit).toBe(true);
+    expect(cents(before.body.shortBy)).toBe(25000n);
+
+    await accept(admin, await deposit(user, "100.00"));
+    const partial = await match(user);
+    expect(partial.body.order.id).toBe(before.body.order.id);
+    expect(partial.body.needsDeposit).toBe(true);
+    expect(cents(partial.body.shortBy)).toBe(15000n);
+
+    // pending ကို admin မaccept ချင်သေး — ရာသက်ပန် မရေတွက်ဘူး
+    await deposit(user, "80.00");
+    expect(cents((await match(user)).body.shortBy)).toBe(15000n);
+
+    await accept(admin, await deposit(user, "150.00"));
+    const ready = await match(user);
+    expect(ready.body.needsDeposit).toBe(false);
+    expect(cents(ready.body.shortBy)).toBe(0n);
+    expect((await complete(user, ready.body.order.id)).status).toBe(200);
+  });
+
+  it("will not carry one lucky order's leftover deposit into the next order", async () => {
+    const admin = await makeUser("admin");
+    const user = await makeUser();
+    await luckySetup(admin, user, [
+      { orderNumber: 1, requiredDeposit: "250.00", luckyCommission: "60.00" },
+      { orderNumber: 2, requiredDeposit: "100.00", luckyCommission: "30.00" },
+    ]);
+
+    const one = await match(user);
+    const big = await accept(admin, await deposit(user, "300.00"));
+
+    expect((await complete(user, one.body.order.id)).status).toBe(200);
+    expect(cents((await Transaction.findById(big._id)).appliedAmount)).toBe(25000n);
+
+    // order 2 အတွက် 50.00 ကျန်တဲ့ deposit ကို ပြန်မသုံးဘူး — အသစ်ပဲ ထပ်သွင်းရမယ်
+    const two = await match(user);
+    expect(cents(two.body.order.requireDeposit)).toBe(10000n);
+    expect(two.body.needsDeposit).toBe(true);
+    expect(cents(two.body.shortBy)).toBe(10000n);
+
+    const blocked = await complete(user, two.body.order.id);
+    expect(blocked.status).toBe(400);
+    expect(blocked.body.message).toMatch(/short by 100\.00/);
+
+    await accept(admin, await deposit(user, "100.00"));
+    expect((await complete(user, two.body.order.id)).status).toBe(200);
+
+    const txBig = await Transaction.findById(big._id);
+    expect(cents(txBig.appliedAmount)).toBe(25000n); // 50.00 surplus ကို ဘယ်သူမှ မထိဘူး
+    expect(txBig.allocation?.taskId?.toString()).toBe(one.body.order.id);
+  });
+
+  it("still refuses a lucky order when the split deposits do not add up", async () => {
+    const admin = await makeUser("admin");
+    const user = await makeUser();
+    await luckySetup(admin, user, [
+      { orderNumber: 1, requiredDeposit: "250.00", luckyCommission: "60.00" },
+    ]);
+
+    const matched = await match(user);
+    await accept(admin, await deposit(user, "100.00"));
+    await accept(admin, await deposit(user, "50.00"));
+
+    const partial = await match(user);
+    expect(partial.body.order.id).toBe(matched.body.order.id);
+    expect(partial.body.needsDeposit).toBe(true);
+    expect(cents(partial.body.shortBy)).toBe(10000n);
+
+    const blocked = await complete(user, partial.body.order.id);
+    expect(blocked.status).toBe(400);
+    expect(blocked.body.message).toMatch(/short by 100\.00/);
+
+    // transaction abort — စုထားတဲ့ 150 ကိုပါ မသုံးဘဲ ပြန်လှန်ထားတယ်
+    const deposits = await Transaction.find({
+      userId: user._id,
+      type: "deposit",
+      status: "accepted",
+    });
+    expect(deposits).toHaveLength(3); // 1000 round base + 100 + 50
+    for (const tx of deposits) {
+      expect(cents(tx.appliedAmount)).toBe(0n);
+      expect(tx.allocation).toBeNull();
+    }
+  });
+
+  it("ignores an accepted deposit made before the lucky order appeared", async () => {
+    const admin = await makeUser("admin");
+    const user = await makeUser();
+    await luckySetup(admin, user, [
+      { orderNumber: 1, requiredDeposit: "250.00", luckyCommission: "60.00" },
+    ]);
+
+    // order မကျခင် ကြိုထည့်ထားတဲ့ 250 — lucky deposit အဖြစ် မရေတွက်ဘူး
+    const early = await accept(admin, await deposit(user, "250.00"));
+
+    const matched = await match(user);
+    expect(matched.body.needsDeposit).toBe(true);
+    expect(cents(matched.body.shortBy)).toBe(25000n);
+
+    const blocked = await complete(user, matched.body.order.id);
+    expect(blocked.status).toBe(400);
+    expect(blocked.body.message).toMatch(/short by 250\.00/);
+    expect(cents((await Transaction.findById(early._id)).appliedAmount)).toBe(0n);
+
+    // order ကျပြီးမှ ထပ်သွင်းတဲ့ 250 ကသာ lucky deposit ဖြစ်တယ်
+    await accept(admin, await deposit(user, "250.00"));
+    const ready = await match(user);
+    expect(ready.body.needsDeposit).toBe(false);
+    expect((await complete(user, ready.body.order.id)).status).toBe(200);
+
+    expect(cents((await Transaction.findById(early._id)).appliedAmount)).toBe(0n);
   });
 });
 

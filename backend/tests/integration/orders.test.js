@@ -614,12 +614,21 @@ async function planTasks(userId) {
   return Task.find({ userId }).sort({ orderNumber: 1 });
 }
 
-async function completeTask(user, taskId) {
-  // Real flow: order ကို match (assign) လုပ်ပြီးမှ complete ခေါ်နိုင်တယ်။
+// Lucky order "ကျတဲ့" အချိန်ကို match (assign) က ဖြစ်စေတယ် — lucky deposit fence
+// က assignedAt ကို ကြည့်လို့၊ deposit တွေက ဒီအခိုက်အတန့်နောက်မှာ ပေါ်ရမယ်။
+async function assignTask(taskId) {
   await Task.updateOne(
     { _id: taskId },
     { $set: { status: "assigned", assignedAt: new Date() } },
   );
+}
+
+async function completeTask(user, taskId) {
+  // Real flow: order ကို match (assign) လုပ်ပြီးမှ complete ခေါ်နိုင်တယ်။
+  // က already assigned ဖြစ်ရင် fence အချိန်ကို မရွှေ့ဘူး (deposit တွေ ပျောက်မယ်)။
+  if (!(await Task.exists({ _id: taskId, status: "assigned" }))) {
+    await assignTask(taskId);
+  }
 
   return request(app)
     .post(`/api/tasks/complete/${taskId}`)
@@ -1345,6 +1354,9 @@ describe("Plan-based completion (strict sequence)", () => {
 
     expect((await completeTask(user, tasks[0]._id)).status).toBe(200);
 
+    // lucky order ကျပြီ — ဒီအချိန်နောက်မှာ တင်တဲ့ deposit တွေပဲ လာဖည့်နိုင်တယ်
+    await assignTask(tasks[1]._id);
+
     let res = await completeTask(user, tasks[1]._id);
     expect(res.status).toBe(400);
     expect(res.body.message).toMatch(/deposit/i);
@@ -1399,9 +1411,12 @@ describe("Plan-based completion (strict sequence)", () => {
 
     expect((await completeTask(user, tasks[0]._id)).status).toBe(200);
 
+    await assignTask(tasks[1]._id);
     let res = await completeTask(user, tasks[1]._id);
     expect(res.status).toBe(400);
 
+    // ကျတဲ့အခါ ဘယ်မှာတင်လဲ — 500 ကို အရင် round base အဖြစ် သုံးထားပေမဲ့
+    // အဲဒီ tx က fence အောက်မှာ ရှိလို့ ပြန်မသုံးနိုင်ဘူး
     await makeDeposit(user._id, "500.00");
     res = await completeTask(user, tasks[1]._id);
     expect(res.status).toBe(200);
@@ -1481,6 +1496,7 @@ describe("Plan-based completion (strict sequence)", () => {
 
     expect((await completeTask(user, tasks[0]._id)).status).toBe(200);
 
+    await assignTask(tasks[1]._id);
     await makeDeposit(user._id, "250.00");
     expect((await completeTask(user, tasks[1]._id)).status).toBe(200);
     expect((await completeTask(user, tasks[2]._id)).status).toBe(200);
@@ -1488,6 +1504,8 @@ describe("Plan-based completion (strict sequence)", () => {
     let res = await completeTask(user, tasks[3]._id);
     expect(res.status).toBe(400);
 
+    // order 4 အတွက် ကိုယ်ပိုင် deposit အသစ် လိုတယ် — order 2 သုံးထားတဲ့ 250
+    // ကို ပြန်မခံဘူး (appliedAmount ပြည့်ပြီး, fence အောက်မှာလဲ ရှိနေသေး)
     await makeDeposit(user._id, "250.00");
     res = await completeTask(user, tasks[3]._id);
     expect(res.status).toBe(200);
