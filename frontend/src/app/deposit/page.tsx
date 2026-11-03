@@ -22,8 +22,6 @@ export default function DepositPage() {
   const [displayAmount, setDisplayAmount] = useState("$1,000.00");
   const [cryptoAddress, setCryptoAddress] = useState<string | null>(null);
   const [qrUrl, setQrUrl] = useState<string | null>(null);
-  const [payTo, setPayTo] = useState<string | null>(null);
-  const [addressSource, setAddressSource] = useState<"owner" | "admin" | null>(null);
   const [orderId, setOrderId] = useState("");
   const [proofImage, setProofImage] = useState<string | null>(null);
   const [proofUploading, setProofUploading] = useState(false);
@@ -36,14 +34,10 @@ export default function DepositPage() {
       .then((res) => {
         setCryptoAddress(res.cryptoAddress);
         setQrUrl(res.qrUrl);
-        setPayTo(res.payTo);
-        setAddressSource(res.source);
       })
       .catch(() => {
         setCryptoAddress(null);
         setQrUrl(null);
-        setPayTo(null);
-        setAddressSource(null);
       });
   }, [user]);
 
@@ -253,22 +247,6 @@ export default function DepositPage() {
                 )}
               </div>
               <span className="text-[11px] text-gray-400">{t("deposit.qrCode")}</span>
-
-              {cryptoAddress && (
-                <div className="w-full text-center">
-                  <p className="text-[10px] text-gray-400">
-                    {t("deposit.payTo")}:{" "}
-                    <span className="font-semibold text-gray-600">
-                      {payTo || t("deposit.platformWallet")}
-                    </span>
-                    {addressSource === "admin" && (
-                      <span className="ml-1 text-[9px] font-bold text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded">
-                        {t("deposit.platformWallet")}
-                      </span>
-                    )}
-                  </p>
-                </div>
-              )}
 
               <div className="w-full bg-orange-50/60 border border-orange-100 rounded-xl p-3 flex items-center justify-between text-left">
                 <div className="overflow-hidden pr-2">
