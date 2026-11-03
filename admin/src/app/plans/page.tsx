@@ -17,6 +17,7 @@ const REFRESH_EVENTS = [
   "order:plan_generated",
   "order:plan_completed",
   "order:lucky_added",
+  "order:lucky_removed",
   "task:completed",
 ];
 
@@ -196,6 +197,24 @@ export default function AdminPlansPage() {
       t("admin.plans.luckyAdded", { number: tag.orderNumber }),
     );
 
+  // Grab မလုပ်ရသေးတဲ့ order ပဲ backend က ခွင့်တယ် — user စတင်ပြီးသားရင်
+  // 409 ပြန်လာပြီး ဒီ error row မှာပဲ ပေါ်တယ်။
+  const removeLucky = async (plan: ApiPlan, orderNumber: number) => {
+    if (
+      !window.confirm(
+        t("admin.plans.luckyRemoveConfirm", { number: orderNumber }),
+      )
+    ) {
+      return;
+    }
+
+    await run(
+      plan.userId,
+      () => api.adminRemoveLuckyPosition(plan._id, orderNumber),
+      t("admin.plans.luckyRemoved", { number: orderNumber }),
+    );
+  };
+
   const generate = (plan: ApiPlan) =>
     run(
       plan.userId,
@@ -288,6 +307,7 @@ export default function AdminPlansPage() {
               onCreate={createPlan}
               onUpdateDraft={updateDraft}
               onAddLucky={addLucky}
+              onRemoveLucky={removeLucky}
               onGenerate={generate}
               onDelete={remove}
               onOpenTasks={openTasks}

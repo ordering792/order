@@ -603,3 +603,190 @@ describe("Mid-round lucky order (POST /api/orders/plans/:id/lucky-positions)", (
     expect(saved.luckyPositions).toHaveLength(0);
   });
 });
+
+describe("Removing a mid-round lucky order (DELETE /api/orders/plans/:id/lucky-positions/:orderNumber)", () => {
+  function removeLucky(planId, actor, orderNumber) {
+    return request(app)
+      .delete(`/api/orders/plans/${planId}/lucky-positions/${orderNumber}`)
+      .set("Authorization", `Bearer ${makeToken(actor)}`);
+  }
+
+  function addLucky(planId, actor, body) {
+    return request(app)
+      .post(`/api/orders/plans/${planId}/lucky-positions`)
+      .set("Authorization", `Bearer ${makeToken(actor)}`)
+      .send(body);
+  }
+
+  async function tasksOf(userId) {
+    const rows = await Task.find({ userId }).sort({ orderNumber: 1 });
+    return rows.map((task) => ({
+      orderNumber: task.orderNumber,
+      productId: task.productId?.toString() ?? null,
+      productName: task.productName,
+      price: parseFloat(task.price.toString()),
+      commission: parseFloat(task.commission.toString()),
+      isLuckyOrder: task.isLuckyOrder,
+    }));
+  }
+
+  // 0.50% commission, half-up — written independently of orderSelection.js
+  function plainCommission(price) {
+    const priceCents = BigInt(Math.round(price * 100));
+    return Number((5n * priceCents + 500n) / 1000n) / 100;
+  }
+
+  it("turns the lucky order back into a plain one and leaves the round alone", async () => {
+    const admin = await createUser("admin");
+    const user = await createUser("user", { balance: "300.00" });
+    const planId = await setupBalanceRound(admin, user, { totalOrders: 5 });
+
+    const added = await addLucky(planId, admin, {
+      orderNumber: 3,
+      requiredDeposit: "250.00",
+      luckyCommission: "12.00",
+    });
+    expect(added.status).toBe(201);
+
+    const lucky = await tasksOf(user._id);
+    expect(lucky[2].isLuckyOrder).toBe(true);
+    expect(lucky[2].commission).toBeCloseTo(12, 2);
+
+    const res = await removeLucky(planId, admin, 3);
+    expect(res.status).toBe(200);
+    expect(res.body.plan.luckyPositions).toHaveLength(0);
+
+    const after = await tasksOf(user._id);
+    expect(after).toHaveLength(5);
+
+    // product/price ကို မထိဘူး — tag နဲ့ commission ပဲ ပြောင်းတယ်။
+    expect(after[2].productId).toBe(lucky[2].productId);
+    expect(after[2].price).toBeCloseTo(lucky[2].price, 2);
+    expect(after[2].isLuckyOrder).toBe(false);
+    expect(after[2].commission).toBeCloseTo(plainCommission(after[2].price), 2);
+
+    for (const orderNumber of [1, 2, 4, 5]) {
+      expect(after[orderNumber - 1]).toEqual(lucky[orderNumber - 1]);
+    }
+
+    const saved = await OrderPlan.findById(planId);
+    expect(parseFloat(saved.currentBase.toString())).toBeCloseTo(300, 2);
+    expect(saved.completedCount).toBe(0);
+
+    expect(emitToAdmins).toHaveBeenCalledWith(
+      "order:lucky_removed",
+      expect.objectContaining({ orderNumber: 3 }),
+    );
+  });
+
+  it("refuses to remove a tag on an order the user already grabbed", async () => {
+    const admin = await createUser("admin");
+    const user = await createUser("user", { balance: "300.00" });
+    const planId = await setupBalanceRound(admin, user, { totalOrders: 5 });
+
+    await addLucky(planId, admin, {
+      orderNumber: 2,
+      requiredDeposit: "100.00",
+      luckyCommission: "8.00",
+    });
+
+    await Task.updateOne(
+      { userId: user._id, orderNumber: 2 },
+      { $set: { status: "assigned", assignedAt: new Date() } },
+    );
+
+    const res = await removeLucky(planId, admin, 2);
+    expect(res.status).toBe(409);
+    expect(res.body.message).toMatch(/in progress/i);
+
+    const saved = await OrderPlan.findById(planId);
+    expect(saved.luckyPositions).toHaveLength(1);
+
+    const task = await Task.findOne({ userId: user._id, orderNumber: 2 });
+    expect(task.isLuckyOrder).toBe(true);
+    expect(parseFloat(task.commission.toString())).toBeCloseTo(8, 2);
+  });
+
+  it("only removes from a generated round, never from a draft", async () => {
+    const admin = await createUser("admin");
+    const user = await createUser("user");
+    const plan = await createPlan(admin, user._id.toString(), 5, [
+      { orderNumber: 2, requiredDeposit: "0.00", luckyCommission: "3.00" },
+    ]);
+
+    const res = await removeLucky(plan._id.toString(), admin, 2);
+
+    expect(res.status).toBe(409);
+    expect(res.body.message).toMatch(/generated/i);
+
+    const saved = await OrderPlan.findById(plan._id);
+    expect(saved.luckyPositions).toHaveLength(1);
+  });
+
+  it("says so when the order carries no lucky tag", async () => {
+    const admin = await createUser("admin");
+    const user = await createUser("user", { balance: "300.00" });
+    const planId = await setupBalanceRound(admin, user, { totalOrders: 5 });
+
+    const notLucky = await removeLucky(planId, admin, 1);
+    expect(notLucky.status).toBe(404);
+    expect(notLucky.body.message).toMatch(/not a lucky order/i);
+
+    const badNumber = await request(app)
+      .delete(`/api/orders/plans/${planId}/lucky-positions/0`)
+      .set("Authorization", `Bearer ${makeToken(admin)}`);
+    expect(badNumber.status).toBe(400);
+
+    const asUser = await removeLucky(planId, user, 1);
+    expect(asUser.status).toBe(403);
+  });
+
+  it("pays the plain commission and claims no deposit once the tag is gone", async () => {
+    const admin = await createUser("admin");
+    const user = await createUser("user", {
+      balance: "300.00",
+      licenseAcceptedAt: new Date(),
+    });
+    const planId = await setupBalanceRound(admin, user, { totalOrders: 2 });
+
+    await addLucky(planId, admin, {
+      orderNumber: 1,
+      requiredDeposit: "250.00",
+      luckyCommission: "50.00",
+    });
+    expect((await removeLucky(planId, admin, 1)).status).toBe(200);
+
+    const matched = await request(app)
+      .post("/api/tasks/match")
+      .set("Authorization", `Bearer ${makeToken(user)}`)
+      .send({});
+    expect(matched.status).toBe(200);
+    expect(matched.body.needsDeposit).toBe(false);
+    expect(matched.body.order.isLuckyOrder).toBe(false);
+
+    // Order ကျပြီးမှ တင်တဲ့ deposit — tag ရှိနေရင် ဒီပိုက်ဆံကို claim လုပ်မယ်။
+    const tx = await makeDeposit(user._id, "250.00");
+
+    const task = await Task.findOne({ userId: user._id, orderNumber: 1 });
+    const completed = await request(app)
+      .post(`/api/tasks/complete/${task._id}`)
+      .set("Authorization", `Bearer ${makeToken(user)}`)
+      .send({});
+    expect(completed.status).toBe(200);
+
+    const price = parseFloat(task.price.toString());
+    const funded = await User.findById(user._id);
+    expect(parseFloat(funded.balance.toString())).toBeCloseTo(
+      300 + plainCommission(price),
+      2,
+    );
+
+    const spent = await Transaction.findById(tx._id);
+    expect(parseFloat(spent.appliedAmount.toString())).toBe(0);
+    expect(spent.allocation).toBeNull();
+
+    const saved = await OrderPlan.findById(planId);
+    expect(parseFloat(saved.currentBase.toString())).toBeCloseTo(300, 2);
+    expect(saved.completedCount).toBe(1);
+  });
+});

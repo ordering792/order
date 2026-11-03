@@ -512,4 +512,77 @@ async function addLuckyPosition(
   }
 }
 
-module.exports = { generateOrders, addLuckyPosition };
+// ထည့်ထားတဲ့ lucky tag ကို ပြန်ဖျက်တယ် — add လိုပဲ user မသေး grab ထားတဲ့
+// (status available) order ပဲ။ add က product ကို overwrite လုပ်ထားလို့ မူလ
+// product ကို ပြန်မရဘူး; lucky order ရဲ့ band က သူ့ requiredDeposit ကို မထည့်တွက်တဲ့
+// formula (orderSelection.projectedBaseCents) အတိုင်း normal order နဲ့ တူလို့
+// product/price ကိုထားပြီး commission ကို ပုံမှန် 0.5% နဲ့ ပြန်တွက်တယ်။
+async function removeLuckyPosition({ planId, orderNumber }, actor) {
+  await getPlanById(planId, actor);
+
+  const session = await mongoose.startSession();
+
+  try {
+    let updated;
+
+    await session.withTransaction(async () => {
+      const fresh = await OrderPlan.findById(planId).session(session);
+
+      if (!fresh) {
+        throw httpError(404, "Plan not found");
+      }
+
+      if (fresh.status !== "generated") {
+        throw httpError(
+          409,
+          "Lucky positions can only be removed from a generated plan",
+        );
+      }
+
+      const index = fresh.luckyPositions.findIndex(
+        (position) => position.orderNumber === orderNumber,
+      );
+
+      if (index === -1) {
+        throw httpError(404, `Order ${orderNumber} is not a lucky order`);
+      }
+
+      const task = await Task.findOne({
+        userId: fresh.userId,
+        orderPlanId: fresh._id,
+        orderNumber,
+      }).session(session);
+
+      if (!task) {
+        throw httpError(404, `Order ${orderNumber} not found`);
+      }
+
+      if (task.status !== "available") {
+        throw httpError(409, `Order ${orderNumber} is already in progress`);
+      }
+
+      task.isLuckyOrder = false;
+      task.commission = decimal(
+        commissionCents(toCents(task.price.toString())),
+      );
+      await task.save({ session });
+
+      fresh.luckyPositions.splice(index, 1);
+      await fresh.save({ session });
+
+      updated = fresh;
+    });
+
+    emitToAdmins("order:lucky_removed", {
+      planId: String(updated._id),
+      userId: String(updated.userId),
+      orderNumber,
+    });
+
+    return updated;
+  } finally {
+    await session.endSession();
+  }
+}
+
+module.exports = { generateOrders, addLuckyPosition, removeLuckyPosition };

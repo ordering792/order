@@ -39,6 +39,7 @@ interface OrderUserCardProps {
     tags: LuckyTagInput[],
   ) => void;
   onAddLucky: (plan: ApiPlan, tag: LuckyTagInput) => Promise<boolean>;
+  onRemoveLucky: (plan: ApiPlan, orderNumber: number) => void;
   onGenerate: (plan: ApiPlan) => void;
   onDelete: (plan: ApiPlan) => void;
   onOpenTasks: (row: ApiBoardRow) => void;
@@ -79,6 +80,7 @@ export default function OrderUserCard({
   onCreate,
   onUpdateDraft,
   onAddLucky,
+  onRemoveLucky,
   onGenerate,
   onDelete,
   onOpenTasks,
@@ -349,7 +351,18 @@ export default function OrderUserCard({
                   <p className="text-xs text-slate-600">
                     +${money(position.luckyCommission)}
                   </p>
-                  <span />
+                  <button
+                    data-testid="card-lucky-remove"
+                    onClick={() => {
+                      if (plan) onRemoveLucky(plan, position.orderNumber);
+                    }}
+                    disabled={busy}
+                    title={t("admin.lucky.remove")}
+                    aria-label={t("admin.lucky.remove")}
+                    className="rounded-lg border border-red-200 bg-white p-1.5 text-red-500 transition hover:bg-red-50 disabled:opacity-50"
+                  >
+                    <Trash2 size={13} />
+                  </button>
                 </div>
               ))}
 

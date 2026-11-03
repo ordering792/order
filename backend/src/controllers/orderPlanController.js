@@ -4,6 +4,7 @@ const orderPlanService = require("../services/orderPlanService");
 const {
   generateOrders,
   addLuckyPosition,
+  removeLuckyPosition,
 } = require("../services/orderGenerationService");
 
 const createPlanSchema = z.object({
@@ -38,6 +39,11 @@ const luckyPositionSchema = z.object({
   productId: z.string().length(24).nullish(),
   requiredDeposit: z.string().default("0.00"),
   luckyCommission: z.string(),
+});
+
+// Path param က string ဖြစ်လို့ order number ကို ကိုယ်တိုင် coerce လုပ်တယ်။
+const luckyRemovalSchema = z.object({
+  orderNumber: z.coerce.number().int().min(1).max(500),
 });
 
 // Error handling ကို asyncHandler + app.js global handler က ထားတယ်။
@@ -170,6 +176,29 @@ exports.addLuckyPosition = asyncHandler(async (req, res) => {
 
   res.status(201).json({
     message: `Lucky position added on order ${parsed.data.orderNumber}`,
+    plan: orderPlanService.serializePlan(plan),
+  });
+});
+
+exports.removeLuckyPosition = asyncHandler(async (req, res) => {
+  const parsed = luckyRemovalSchema.safeParse({
+    orderNumber: req.params.orderNumber,
+  });
+
+  if (!parsed.success) {
+    return res.status(400).json({
+      message: "Validation failed",
+      errors: parsed.error.issues,
+    });
+  }
+
+  const plan = await removeLuckyPosition(
+    { planId: req.params.id, orderNumber: parsed.data.orderNumber },
+    req.user,
+  );
+
+  res.json({
+    message: `Lucky position removed from order ${parsed.data.orderNumber}`,
     plan: orderPlanService.serializePlan(plan),
   });
 });

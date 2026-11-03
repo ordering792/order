@@ -18,6 +18,13 @@ router.post(
   adminOrOwner,
   controller.addLuckyPosition,
 );
+// ထည့်ထားတဲ့ tag ကို ပြန်ဖျက်တာ — အခုလဲ မစမ်းသေးတဲ့ order ကိုပဲ ခွင့်တယ်။
+router.delete(
+  "/plans/:id/lucky-positions/:orderNumber",
+  auth,
+  adminOrOwner,
+  controller.removeLuckyPosition,
+);
 router.delete("/plans/:id", auth, adminOrOwner, controller.deletePlan);
 
 module.exports = router;

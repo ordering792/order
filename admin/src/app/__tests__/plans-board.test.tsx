@@ -15,6 +15,7 @@ jest.mock("@/lib/api", () => {
       adminCreatePlan: jest.fn(),
       adminUpdatePlan: jest.fn(),
       adminAddLuckyPosition: jest.fn(),
+      adminRemoveLuckyPosition: jest.fn(),
       adminGeneratePlan: jest.fn(),
       adminDeletePlan: jest.fn(),
       adminListUserTasks: jest.fn(),
@@ -93,6 +94,7 @@ beforeEach(() => {
   (api.adminCreatePlan as jest.Mock).mockReset().mockResolvedValue({});
   (api.adminUpdatePlan as jest.Mock).mockReset().mockResolvedValue({});
   (api.adminAddLuckyPosition as jest.Mock).mockReset().mockResolvedValue({});
+  (api.adminRemoveLuckyPosition as jest.Mock).mockReset().mockResolvedValue({});
   (api.adminGeneratePlan as jest.Mock).mockReset().mockResolvedValue({});
   (api.adminDeletePlan as jest.Mock).mockReset().mockResolvedValue({});
   (api.adminListUserTasks as jest.Mock).mockReset().mockResolvedValue({
@@ -270,6 +272,64 @@ describe("Admin order plan board", () => {
       await screen.findByText("Order 7 is already in progress"),
     ).toBeInTheDocument();
     expect(screen.getByTestId("new-lucky-number")).toHaveValue(7);
+  });
+
+  it("removes a lucky order the user has not tested yet", async () => {
+    const user = userEvent.setup();
+    jest.spyOn(window, "confirm").mockReturnValue(true);
+    board([
+      row({
+        plan: draftPlan({
+          status: "generated",
+          luckyPositions: [
+            {
+              orderNumber: 5,
+              productId: null,
+              requiredDeposit: "250.00",
+              luckyCommission: "100.00",
+            },
+          ],
+        }),
+      }),
+    ]);
+    await renderPage();
+
+    await user.click(screen.getByTestId("card-lucky-remove"));
+
+    await waitFor(() =>
+      expect(api.adminRemoveLuckyPosition).toHaveBeenCalledWith(PLAN_ID, 5),
+    );
+    expect(
+      await screen.findByText("Lucky order removed from order #5"),
+    ).toBeInTheDocument();
+  });
+
+  it("asks before removing and sends nothing when the admin cancels", async () => {
+    const user = userEvent.setup();
+    const confirm = jest.spyOn(window, "confirm").mockReturnValue(false);
+    board([
+      row({
+        plan: draftPlan({
+          status: "generated",
+          luckyPositions: [
+            {
+              orderNumber: 5,
+              productId: null,
+              requiredDeposit: "250.00",
+              luckyCommission: "100.00",
+            },
+          ],
+        }),
+      }),
+    ]);
+    await renderPage();
+
+    await user.click(screen.getByTestId("card-lucky-remove"));
+
+    expect(confirm).toHaveBeenCalledWith(
+      expect.stringContaining("#5"),
+    );
+    expect(api.adminRemoveLuckyPosition).not.toHaveBeenCalled();
   });
 
   it("opens the round tasks as a drawer and completes an order", async () => {
