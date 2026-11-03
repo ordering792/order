@@ -18,6 +18,7 @@ jest.mock("../../src/socket", () => ({
 const app = require("../../src/app");
 const User = require("../../src/models/User");
 const Product = require("../../src/models/Product");
+const { CATALOG_LIMITS } = require("../../src/constants/catalogLimits");
 
 const JWT_SECRET = process.env.JWT_SECRET || "test-secret";
 
@@ -164,6 +165,61 @@ describe("Product catalog endpoints", () => {
         });
 
       expect(res.status).toBe(400);
+    });
+
+    // Admin catalog တွေမှာ listing title အရှည်တွေ ဝင်တယ် — Zod နဲ့ Mongoose
+    // နှစ်ခုလုံး ဒီ limit ကို သုံးတယ်၊ ကွဲရင် 400 ဖြတ်ပြီး storage က ပယ်မယ်။
+    it("stores a category longer than the old 100-character cap", async () => {
+      const admin = await createUser("admin");
+      const category = "MAX BUILD MORE Premium Retro Collection by ZURU - Surprise Blind Unboxing Fun, Build & Play Retro Toy";
+
+      expect(category.length).toBeGreaterThan(100);
+
+      const res = await request(app)
+        .post("/api/products")
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({
+          name: "Toys",
+          category,
+          price: "20.19",
+        });
+
+      expect(res.status).toBe(201);
+
+      const saved = await Product.findOne({ name: "Toys" });
+      expect(saved.category).toBe(category);
+    });
+
+    it("stores a title up to the raised name cap", async () => {
+      const admin = await createUser("admin");
+      const res = await request(app)
+        .post("/api/products")
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({
+          name: "N".repeat(CATALOG_LIMITS.NAME),
+          price: "10.00",
+        });
+
+      expect(res.status).toBe(201);
+    });
+
+    it("still rejects text past the raised caps, naming the field", async () => {
+      const admin = await createUser("admin");
+
+      const res = await request(app)
+        .post("/api/products")
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({
+          name: "N".repeat(CATALOG_LIMITS.NAME + 1),
+          category: "C".repeat(CATALOG_LIMITS.CATEGORY + 1),
+          price: "10.00",
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.errors.map((issue) => issue.path[0])).toEqual([
+        "name",
+        "category",
+      ]);
     });
   });
 

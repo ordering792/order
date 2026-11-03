@@ -62,6 +62,8 @@ export const adminUiDict: Dict = {
       "Enter a valid TRC20 address (T + 33 characters)",
     "admin.users.walletUnchanged": "New address matches the current one",
     "admin.users.walletUpdated": "Wallet address updated for {name}",
+    "admin.field.description": "Description",
+    "admin.error.invalidFields": "Check these fields: {fields}",
   },
   es: {
     "admin.field.name": "Nombre",
@@ -124,6 +126,8 @@ export const adminUiDict: Dict = {
       "Introduce una dirección TRC20 válida (T + 33 caracteres)",
     "admin.users.walletUnchanged": "La nueva dirección coincide con la actual",
     "admin.users.walletUpdated": "Dirección de billetera actualizada para {name}",
+    "admin.field.description": "Descripción",
+    "admin.error.invalidFields": "Revisa estos campos: {fields}",
   },
   pt: {
     "admin.field.name": "Nome",
@@ -186,6 +190,8 @@ export const adminUiDict: Dict = {
       "Insira um endereço TRC20 válido (T + 33 caracteres)",
     "admin.users.walletUnchanged": "O novo endereço é igual ao atual",
     "admin.users.walletUpdated": "Endereço da carteira atualizado para {name}",
+    "admin.field.description": "Descrição",
+    "admin.error.invalidFields": "Verifique estes campos: {fields}",
   },
   ar: {
     "admin.field.name": "الاسم",
@@ -248,6 +254,8 @@ export const adminUiDict: Dict = {
       "أدخل عنوان TRC20 صالحًا (T + 33 حرفًا)",
     "admin.users.walletUnchanged": "العنوان الجديد مطابق للحالي",
     "admin.users.walletUpdated": "تم تحديث عنوان المحفظة لـ {name}",
+    "admin.field.description": "الوصف",
+    "admin.error.invalidFields": "تحقّق من هذه الحقول: {fields}",
   },
   ja: {
     "admin.field.name": "名前",
@@ -310,6 +318,8 @@ export const adminUiDict: Dict = {
       "有効なTRC20アドレスを入力してください（T + 33文字）",
     "admin.users.walletUnchanged": "新しいアドレスが現在のアドレスと同じです",
     "admin.users.walletUpdated": "{name} のウォレットアドレスを更新しました",
+    "admin.field.description": "説明",
+    "admin.error.invalidFields": "次の項目を確認してください: {fields}",
   },
   th: {
     "admin.field.name": "ชื่อ",
@@ -372,6 +382,8 @@ export const adminUiDict: Dict = {
       "กรอกที่อยู่ TRC20 ที่ถูกต้อง (T + 33 ตัวอักษร)",
     "admin.users.walletUnchanged": "ที่อยู่ใหม่ตรงกับที่อยู่ปัจจุบัน",
     "admin.users.walletUpdated": "อัปเดตที่อยู่กระเป๋าเงินของ {name} แล้ว",
+    "admin.field.description": "รายละเอียด",
+    "admin.error.invalidFields": "ตรวจสอบฟิลด์เหล่านี้: {fields}",
   },
   ko: {
     "admin.field.name": "이름",
@@ -434,6 +446,8 @@ export const adminUiDict: Dict = {
       "유효한 TRC20 주소를 입력하세요 (T + 33자)",
     "admin.users.walletUnchanged": "새 주소가 현재 주소와 같습니다",
     "admin.users.walletUpdated": "{name}의 지갑 주소를 업데이트했습니다",
+    "admin.field.description": "설명",
+    "admin.error.invalidFields": "다음 항목을 확인하세요: {fields}",
   },
   zh: {
     "admin.field.name": "姓名",
@@ -496,6 +510,8 @@ export const adminUiDict: Dict = {
       "请输入有效的 TRC20 地址（T + 33 位）",
     "admin.users.walletUnchanged": "新地址与当前地址相同",
     "admin.users.walletUpdated": "已更新 {name} 的钱包地址",
+    "admin.field.description": "描述",
+    "admin.error.invalidFields": "请检查以下字段：{fields}",
   },
   ur: {
     "admin.field.name": "نام",
@@ -558,5 +574,7 @@ export const adminUiDict: Dict = {
       "درست TRC20 ایڈریس درج کریں (T + 33 حروف)",
     "admin.users.walletUnchanged": "نیا ایڈریس موجودہ ایڈریس سے مماثل ہے",
     "admin.users.walletUpdated": "{name} کا والیٹ ایڈریس اپ ڈیٹ ہو گیا",
+    "admin.field.description": "تفصیل",
+    "admin.error.invalidFields": "ان فیلڈوں کو دیکھیں: {fields}",
   },
 };

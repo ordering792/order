@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { CATALOG_LIMITS } = require("../constants/catalogLimits");
 
 const productSchema = new mongoose.Schema(
   {
@@ -6,7 +7,7 @@ const productSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
-      maxlength: 200,
+      maxlength: CATALOG_LIMITS.NAME,
     },
 
     // အမှတ်စဉ် — serial / product number shown on the order.
@@ -14,7 +15,7 @@ const productSchema = new mongoose.Schema(
       type: String,
       default: "",
       trim: true,
-      maxlength: 50,
+      maxlength: CATALOG_LIMITS.CODE,
     },
 
     // ပစ္စည်းအမျိုးအစား — product category.
@@ -22,26 +23,26 @@ const productSchema = new mongoose.Schema(
       type: String,
       default: "",
       trim: true,
-      maxlength: 100,
+      maxlength: CATALOG_LIMITS.CATEGORY,
     },
 
     // အသုံးပြုပုံ — how the item is used.
     usage: {
       type: String,
       default: "",
-      maxlength: 2000,
+      maxlength: CATALOG_LIMITS.USAGE,
     },
 
     description: {
       type: String,
       default: "",
-      maxlength: 2000,
+      maxlength: CATALOG_LIMITS.DESCRIPTION,
     },
 
     imageUrl: {
       type: String,
       default: null,
-      maxlength: 1000,
+      maxlength: CATALOG_LIMITS.IMAGE_URL,
     },
 
     price: {

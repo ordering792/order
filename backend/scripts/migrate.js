@@ -17,6 +17,7 @@ const MIGRATIONS = [
   { name: "migrate-task-status", file: "migrate-task-status.js" },
   { name: "migrate-task-index", file: "migrate-task-index.js" },
   { name: "migrate-orderplan-index", file: "migrate-orderplan-index.js" },
+  { name: "migrate-product-snapshot", file: "migrate-product-snapshot.js" },
 ];
 
 const REGISTRY_COLLECTION = "schemamigrations";

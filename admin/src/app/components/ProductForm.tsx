@@ -33,7 +33,7 @@ interface ProductFormProps {
   onCancel: () => void;
 }
 
-// Admin / Owner က product ဖန်တီး/ပြင်တဲ့ form — ၆ မျိုးစလုံး (title, code, category, usage, price, image)။
+// Admin / Owner က product ဖန်တီး/ပြင်တဲ့ form — ၇ မျိုးစလုံး (title, code, category, usage, description, price, image)။
 export default function ProductForm({
   values,
   editing,
@@ -111,6 +111,15 @@ export default function ProductForm({
           <textarea
             {...field("usage")}
             rows={2}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal text-slate-700 outline-none focus:border-[#ff6600]"
+          />
+        </label>
+
+        <label className="text-xs font-semibold text-slate-500 sm:col-span-2">
+          {t("admin.field.description")}
+          <textarea
+            {...field("description")}
+            rows={3}
             className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal text-slate-700 outline-none focus:border-[#ff6600]"
           />
         </label>

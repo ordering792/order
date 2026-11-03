@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Plus, Search, Upload, X, Pencil } from "lucide-react";
-import { api, ApiProduct } from "@/lib/api";
+import { api, ApiError, ApiProduct } from "@/lib/api";
 import { money } from "@/lib/money";
 import { useT } from "@/lib/i18n";
 import ProductForm, {
@@ -12,6 +12,39 @@ import ProductForm, {
 import BulkImportPanel from "../components/BulkImportPanel";
 
 const PAGE_SIZE = 50;
+
+// Backend က 400 response ထဲ Zod issues ကို `errors` အဖြစ် ပို့တယ်، client
+// layer ကလည်း ApiError ထဲ သိမ်းထားတယ် — ဒါပေမဲ့ banner က message တစ်ခုတည်း
+// ယူပြီး ဘယ် field မှားနေတာလဲ ပစ်ဖျက်နေတာ။ Field key ကို locale label နဲ့
+// ပြန်ခေါ်ပြမယ်၊ dictionary မပါတဲ့ path ကို raw အတိုင်း ထားမယ်။
+const FIELD_LABEL_KEYS: Record<string, string> = {
+  name: "admin.field.title",
+  code: "admin.field.code",
+  category: "admin.field.category",
+  description: "admin.field.description",
+  imageUrl: "admin.field.image",
+  price: "admin.field.price",
+  usage: "admin.field.usage",
+};
+
+type Translate = (key: string, vars?: Record<string, string | number>) => string;
+
+function saveError(err: unknown, t: Translate): string {
+  if (!(err instanceof ApiError) || !err.errors?.length) {
+    return err instanceof Error ? err.message : "Save failed";
+  }
+
+  const fields = [
+    ...new Set(
+      err.errors.map((issue) => {
+        const labelKey = FIELD_LABEL_KEYS[String(issue.path[0])];
+        return labelKey ? t(labelKey) : String(issue.path[0]);
+      }),
+    ),
+  ];
+
+  return t("admin.error.invalidFields", { fields: fields.join(", ") });
+}
 
 function toForm(product: ApiProduct): ProductFormValues {
   return {
@@ -112,7 +145,7 @@ export default function AdminProductsPage() {
       setIsFormOpen(false);
       load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+      setError(saveError(err, t));
     }
   };
 

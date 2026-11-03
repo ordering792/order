@@ -2,6 +2,7 @@ const { z } = require("zod");
 const mongoose = require("mongoose");
 const Product = require("../models/Product");
 const asyncHandler = require("../utils/asyncHandler");
+const { CATALOG_LIMITS } = require("../constants/catalogLimits");
 const { toCents, decimal } = require("../utils/money");
 
 const MAX_PRICE_CENTS = 500000n; // 5000.00
@@ -26,23 +27,23 @@ function isValidImageValue(value) {
 }
 
 const createSchema = z.object({
-  name: z.string().min(1).max(200),
-  code: z.string().max(50).optional(),
-  category: z.string().max(100).optional(),
-  usage: z.string().max(2000).optional(),
-  description: z.string().max(2000).optional(),
-  imageUrl: z.string().max(1000).nullish(),
+  name: z.string().min(1).max(CATALOG_LIMITS.NAME),
+  code: z.string().max(CATALOG_LIMITS.CODE).optional(),
+  category: z.string().max(CATALOG_LIMITS.CATEGORY).optional(),
+  usage: z.string().max(CATALOG_LIMITS.USAGE).optional(),
+  description: z.string().max(CATALOG_LIMITS.DESCRIPTION).optional(),
+  imageUrl: z.string().max(CATALOG_LIMITS.IMAGE_URL).nullish(),
   price: z.string(),
   commission: z.string().nullish(),
 });
 
 const updateSchema = z.object({
-  name: z.string().min(1).max(200).optional(),
-  code: z.string().max(50).optional(),
-  category: z.string().max(100).optional(),
-  usage: z.string().max(2000).optional(),
-  description: z.string().max(2000).optional(),
-  imageUrl: z.string().max(1000).nullish(),
+  name: z.string().min(1).max(CATALOG_LIMITS.NAME).optional(),
+  code: z.string().max(CATALOG_LIMITS.CODE).optional(),
+  category: z.string().max(CATALOG_LIMITS.CATEGORY).optional(),
+  usage: z.string().max(CATALOG_LIMITS.USAGE).optional(),
+  description: z.string().max(CATALOG_LIMITS.DESCRIPTION).optional(),
+  imageUrl: z.string().max(CATALOG_LIMITS.IMAGE_URL).nullish(),
   price: z.string().optional(),
   commission: z.string().nullish(),
 });
