@@ -16,18 +16,19 @@ export default function DepositHistoryPage() {
   const t = useT();
   const [transactions, setTransactions] = useState<ApiTransaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<"deposit" | "withdraw">("deposit");
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
     setLoading(true);
     api.myTransactions()
-      .then((res) => {
-        setTransactions(res.transactions.filter((tx) => tx.type === "deposit"));
-      })
+      .then((res) => setTransactions(res.transactions))
       .catch(() => setTransactions([]))
       .finally(() => setLoading(false));
   }, [user]);
+
+  const rows = transactions.filter((tx) => tx.type === tab);
 
   const statusLabel = (status: string) => {
     if (status === "accepted") return t("depositHistory.completed");
@@ -56,12 +57,33 @@ export default function DepositHistoryPage() {
           </Link>
         </div>
 
+        <div className="shrink-0 bg-white px-4 pt-3">
+          <div className="flex gap-1 rounded-xl bg-gray-100 p-1">
+            {(["deposit", "withdraw"] as const).map((kind) => (
+              <button
+                key={kind}
+                data-testid={`history-tab-${kind}`}
+                onClick={() => setTab(kind)}
+                className={`flex-1 rounded-lg py-2 text-xs font-bold transition ${
+                  tab === kind
+                    ? "bg-[#ff6600] text-white shadow"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {kind === "deposit"
+                  ? t("depositHistory.tabDeposit")
+                  : t("depositHistory.tabWithdraw")}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="flex-1 overflow-y-auto w-full relative custom-scrollbar p-4 space-y-3 bg-gray-50">
 
           {loading ? (
             <div className="text-center text-gray-400 py-10 text-sm">{t("depositHistory.loading")}</div>
-          ) : transactions.length > 0 ? (
-            transactions.map((item) => (
+          ) : rows.length > 0 ? (
+            rows.map((item) => (
               <div key={item._id} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-3 text-xs">
 
                 <div className="flex justify-between items-center border-b border-gray-100 pb-2">

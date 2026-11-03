@@ -7,16 +7,16 @@ import {
   Bell,
   Megaphone,
   ClipboardList,
-  CheckCircle2,
+  ArrowDownLeft,
+  ArrowUpRight,
   Home,
   Headphones,
   User,
 } from "lucide-react";
-import { api, ApiTask } from "../../lib/api";
-import { getSocket } from "../../lib/socket";
+import { api, ApiTransaction } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { useT } from "../../lib/i18n";
-import { money } from "../../lib/money";
+import { formatMoney } from "../../lib/money";
 
 interface Announcement {
   _id: string;
@@ -26,7 +26,7 @@ interface Announcement {
   userId?: { name: string } | null;
 }
 
-type NotificationKind = "announcement" | "matched" | "submitted" | "completed";
+type NotificationKind = "announcement" | "deposit" | "withdraw";
 
 interface NotificationItem {
   id: string;
@@ -34,30 +34,31 @@ interface NotificationItem {
   title: string;
   body: string;
   time: string;
-  isNew?: boolean;
 }
 
 const KIND_ICON: Record<NotificationKind, typeof Bell> = {
   announcement: Megaphone,
-  matched: ClipboardList,
-  submitted: ClipboardList,
-  completed: CheckCircle2,
+  deposit: ArrowDownLeft,
+  withdraw: ArrowUpRight,
 };
 
 const KIND_STYLE: Record<NotificationKind, string> = {
   announcement: "bg-purple-50 text-purple-600",
-  matched: "bg-amber-50 text-amber-600",
-  submitted: "bg-blue-50 text-blue-600",
-  completed: "bg-emerald-50 text-emerald-600",
+  deposit: "bg-emerald-50 text-emerald-600",
+  withdraw: "bg-sky-50 text-sky-600",
 };
+
+// Notifications က သတိပေးချက် သီးသန့် — စာရင်းအမှန်က /deposit/history ထဲ။
+// Transaction တစ်ခု = card တစ်စောင် (status ပြောင်းရင် စာသားပဲ ပြောင်း)၊
+// အထပ်မပုံအောင် နောက်ဆုံး ၂၀ ပဲ ပြတယ်။
+const FEED_LIMIT = 20;
 
 export default function NotificationsPage() {
   const t = useT();
   const { user } = useAuth();
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [tasks, setTasks] = useState<ApiTask[]>([]);
+  const [transactions, setTransactions] = useState<ApiTransaction[]>([]);
   const [loading, setLoading] = useState(true);
-  const [liveItems, setLiveItems] = useState<NotificationItem[]>([]);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -68,13 +69,13 @@ export default function NotificationsPage() {
         .then((res) => res.announcements)
         .catch(() => []),
       api
-        .myOrders()
-        .then((res) => res.tasks)
+        .myTransactions()
+        .then((res) => res.transactions)
         .catch(() => []),
     ])
-      .then(([announcementList, taskList]) => {
+      .then(([announcementList, transactionList]) => {
         setAnnouncements(announcementList);
-        setTasks(taskList);
+        setTransactions(transactionList);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -83,67 +84,6 @@ export default function NotificationsPage() {
     if (!user) return;
     load();
   }, [user, load]);
-
-  // Real-time: order matched / submitted / completed ဖြစ်တဲ့အခါ ချက်ချင်း ပေါ်လာမယ်
-  useEffect(() => {
-    if (!user) return;
-
-    const socket = getSocket();
-    if (!socket) return;
-
-    let refreshTimer: number | null = null;
-    const scheduleReload = () => {
-      if (refreshTimer !== null) return;
-      refreshTimer = window.setTimeout(() => {
-        refreshTimer = null;
-        load();
-      }, 800);
-    };
-
-    const onCompleted = (payload: { orderNumber?: number; commission?: string }) => {
-      setLiveItems((items) => [
-        {
-          id: `live-completed-${payload.orderNumber}-${Date.now()}`,
-          kind: "completed",
-          title: t("notifications.orderCompleted", { order: payload.orderNumber ?? "" }),
-          body: payload.commission
-            ? t("notifications.commissionCredited", {
-                amount: `$${money(payload.commission)}`,
-              })
-            : "",
-          time: new Date().toISOString(),
-          isNew: true,
-        },
-        ...items,
-      ]);
-      scheduleReload();
-    };
-
-    const onSubmitted = (payload: { orderNumber?: number }) => {
-      setLiveItems((items) => [
-        {
-          id: `live-submitted-${payload.orderNumber}-${Date.now()}`,
-          kind: "submitted",
-          title: t("notifications.orderSubmitted", { order: payload.orderNumber ?? "" }),
-          body: "",
-          time: new Date().toISOString(),
-          isNew: true,
-        },
-        ...items,
-      ]);
-    };
-
-    socket.on("order:completed", onCompleted);
-    socket.on("order:submitted", onSubmitted);
-
-    return () => {
-      if (refreshTimer !== null) {
-        window.clearTimeout(refreshTimer);
-      }
-      socket.off("order:completed", onCompleted);
-      socket.off("order:submitted", onSubmitted);
-    };
-  }, [user, load, t]);
 
   const items = useMemo<NotificationItem[]>(() => {
     const fromAnnouncements: NotificationItem[] = announcements.map((item) => ({
@@ -154,30 +94,47 @@ export default function NotificationsPage() {
       time: item.createdAt,
     }));
 
-    const fromOrders: NotificationItem[] = tasks.map((task) => ({
-      id: `task-${task._id}`,
-      kind: task.status === "completed" ? "completed" : "matched",
-      title:
-        task.status === "completed"
-          ? t("notifications.orderCompleted", { order: task.orderNumber })
-          : t("notifications.orderMatched", { order: task.orderNumber }),
-      body:
-        task.status === "completed"
-          ? t("notifications.commissionCredited", {
-              amount: `$${money(task.commission)}`,
-            })
-          : task.productName,
-      time:
-        task.completedAt ??
-        task.submittedAt ??
-        task.assignedAt ??
-        new Date().toISOString(),
-    }));
+    const amount = (value: ApiTransaction["amount"]) =>
+      `$${formatMoney(value)}`;
 
-    return [...liveItems, ...fromAnnouncements, ...fromOrders].sort(
-      (a, b) => new Date(b.time).getTime() - new Date(a.time).getTime(),
-    );
-  }, [announcements, tasks, liveItems, t]);
+    const fromTransactions: NotificationItem[] = transactions.map((tx) => {
+      const isDeposit = tx.type === "deposit";
+      const titleKey = isDeposit
+        ? tx.status === "accepted"
+          ? "notifications.depositAccepted"
+          : tx.status === "rejected"
+            ? "notifications.depositRejected"
+            : "notifications.depositPending"
+        : tx.status === "accepted"
+          ? "notifications.withdrawAccepted"
+          : tx.status === "rejected"
+            ? "notifications.withdrawRejected"
+            : "notifications.withdrawPending";
+
+      const bodyKey =
+        tx.status === "pending"
+          ? "notifications.amountPending"
+          : isDeposit
+            ? tx.status === "accepted"
+              ? "notifications.amountCredited"
+              : "notifications.amountNotCredited"
+            : tx.status === "accepted"
+              ? "notifications.amountSent"
+              : "notifications.amountReturned";
+
+      return {
+        id: `tx-${tx._id}`,
+        kind: isDeposit ? "deposit" : "withdraw",
+        title: t(titleKey),
+        body: t(bodyKey, { amount: amount(tx.amount) }),
+        time: (tx.reviewedAt ?? tx.createdAt) || tx.createdAt,
+      };
+    });
+
+    return [...fromAnnouncements, ...fromTransactions]
+      .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
+      .slice(0, FEED_LIMIT);
+  }, [announcements, transactions, t]);
 
   const timeLabel = (iso: string) => {
     const diff = Date.now() - new Date(iso).getTime();
@@ -232,16 +189,9 @@ export default function NotificationsPage() {
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-bold text-gray-800 truncate flex-1">
-                        {item.title}
-                      </p>
-                      {item.isNew && (
-                        <span className="shrink-0 rounded-md bg-[#ff6600] px-1.5 py-0.5 text-[9px] font-bold text-white">
-                          {t("notifications.new")}
-                        </span>
-                      )}
-                    </div>
+                    <p className="text-sm font-bold text-gray-800 truncate">
+                      {item.title}
+                    </p>
 
                     {item.body && (
                       <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-3 leading-relaxed">
