@@ -111,24 +111,25 @@ describe("GET /api/uploads/auth", () => {
     expect(res.body.folder).toBe("/products");
   });
 
-  it("allows payout accounts for wallet qr purpose", async () => {
-    for (const role of ["admin", "owner"]) {
-      const user = await createUser(role);
-      const res = await request(app)
-        .get("/api/uploads/auth?purpose=wallet-qr")
-        .set("Authorization", `Bearer ${makeToken(user)}`);
-
-      expect(res.status).toBe(200);
-      expect(res.body.folder).toBe("/wallet-qr");
-    }
-  });
-
-  it("rejects normal user for wallet qr purpose", async () => {
-    const user = await createUser("user");
+  it("allows admin for wallet qr purpose", async () => {
+    const admin = await createUser("admin");
     const res = await request(app)
       .get("/api/uploads/auth?purpose=wallet-qr")
-      .set("Authorization", `Bearer ${makeToken(user)}`);
+      .set("Authorization", `Bearer ${makeToken(admin)}`);
 
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
+    expect(res.body.folder).toBe("/wallet-qr");
+  });
+
+  // Owner က payout QR တင်လို့ မရတော့ဘူး — လိပ်စာလိုပဲ admin သား။
+  it("rejects user and owner for wallet qr purpose", async () => {
+    for (const role of ["user", "owner"]) {
+      const account = await createUser(role);
+      const res = await request(app)
+        .get("/api/uploads/auth?purpose=wallet-qr")
+        .set("Authorization", `Bearer ${makeToken(account)}`);
+
+      expect(res.status).toBe(403);
+    }
   });
 });

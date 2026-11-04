@@ -712,23 +712,23 @@ describe("Admin & owner endpoints", () => {
       expect(res.body.source).toBeNull();
     });
 
-    it("owner and admin can set their own address and QR", async () => {
-      const owner = await createUser("owner");
+    it("admin can set their own address and QR", async () => {
+      const admin = await createUser("admin");
 
       const res = await request(app)
         .put("/api/auth/owner/crypto-address")
-        .set("Authorization", `Bearer ${makeToken(owner)}`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
         .send({
-          cryptoAddress: "OWNERWALLET000000000000000000002",
-          qrUrl: "https://example.com/owner2.png",
+          cryptoAddress: "ADMINWALLET0000000000000000000002",
+          qrUrl: "https://example.com/admin2.png",
           password: "password123",
         });
 
       expect(res.status).toBe(200);
 
-      const updated = await User.findById(owner._id);
-      expect(updated.cryptoAddress).toBe("OWNERWALLET000000000000000000002");
-      expect(updated.cryptoQrUrl).toBe("https://example.com/owner2.png");
+      const updated = await User.findById(admin._id);
+      expect(updated.cryptoAddress).toBe("ADMINWALLET0000000000000000000002");
+      expect(updated.cryptoQrUrl).toBe("https://example.com/admin2.png");
     });
 
     it("regular user cannot set a crypto address", async () => {

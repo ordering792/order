@@ -55,6 +55,8 @@ export default function AdminWalletPage() {
     }
   };
 
+  const isAdmin = user?.role === "admin";
+
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="mb-1 flex items-center gap-2">
@@ -86,6 +88,7 @@ export default function AdminWalletPage() {
           qrUrl={qrUrl}
           password={password}
           saving={saving}
+          readOnly={!isAdmin}
           onChange={(patch) => {
             if (patch.address !== undefined) setAddress(patch.address);
             if (patch.qrUrl !== undefined) setQrUrl(patch.qrUrl);

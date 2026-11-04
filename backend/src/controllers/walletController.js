@@ -38,21 +38,19 @@ exports.updateOwnerCryptoAddress = asyncHandler(async (req, res) => {
     });
   }
 
-  // ဒီ endpoint က payout account (admin/owner) ရဲ့ လိပ်စာကို ပြောင်းတာ —
+  // ဒီ endpoint က payout account ရဲ့ လိပ်စာကို ပြောင်းတာ (admin သား) —
   // token ခိုးထားတဲ့သူ address လှည့်လိုက်ရင် ပိုက်ဆံ ဆုံးရှုံးနိုင်လို့ password စစ်တယ်။
-  if (isPayoutAccount(req.user)) {
-    const confirmed = await confirmLoginPassword(
-      req.user._id,
-      parsed.data.password,
+  const confirmed = await confirmLoginPassword(
+    req.user._id,
+    parsed.data.password,
+  );
+
+  if (!confirmed.ok) {
+    console.log(
+      `[audit] payout address change rejected account=${req.user._id} reason=${confirmed.message}`,
     );
 
-    if (!confirmed.ok) {
-      console.log(
-        `[audit] payout address change rejected account=${req.user._id} reason=${confirmed.message}`,
-      );
-
-      return res.status(confirmed.status).json({ message: confirmed.message });
-    }
+    return res.status(confirmed.status).json({ message: confirmed.message });
   }
 
   await User.findByIdAndUpdate(req.user._id, {

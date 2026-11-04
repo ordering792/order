@@ -38,7 +38,7 @@ async function auth(req, res, next) {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
 
     const user = await User.findById(payload.userId).select(
-      "_id role status phone name invitationCode tokenVersion licenseAcceptedAt lastSeenAt",
+      "_id role status phone name invitationCode tokenVersion licenseAcceptedAt lastSeenAt notificationsSeenAt",
     );
 
     if (!user || user.status === "burned") {
@@ -87,16 +87,6 @@ function adminOnly(req, res, next) {  if (req.user?.role !== "admin") {
   next();
 }
 
-function ownerOnly(req, res, next) {
-  if (req.user?.role !== "owner" && req.user?.role !== "admin") {
-    return res.status(403).json({
-      message: "Owner access required",
-    });
-  }
-
-  next();
-}
-
 function adminOrOwner(req, res, next) {
   if (!["admin", "owner"].includes(req.user?.role)) {
     return res.status(403).json({
@@ -111,7 +101,6 @@ module.exports = {
   auth,
   requireLicense,
   adminOnly,
-  ownerOnly,
   adminOrOwner,
   isTokenStale,
 };

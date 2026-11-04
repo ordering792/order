@@ -87,3 +87,56 @@ describe("WalletEditor QR upload", () => {
     await waitFor(() => expect(save).toBeEnabled());
   });
 });
+
+describe("WalletEditor owner view", () => {
+  function renderReadOnly(props: { address?: string; qrUrl?: string } = {}) {
+    render(
+      <LanguageProvider>
+        <WalletEditor
+          address={props.address ?? ADDRESS}
+          qrUrl={props.qrUrl ?? ""}
+          password=""
+          readOnly
+          onChange={jest.fn()}
+          onPasswordChange={jest.fn()}
+          onSave={jest.fn()}
+        />
+      </LanguageProvider>,
+    );
+  }
+
+  it("shows the address with nothing that can write it", () => {
+    renderReadOnly();
+
+    expect(screen.getByTestId("wallet-readonly-address")).toHaveTextContent(
+      ADDRESS,
+    );
+    expect(screen.queryByTestId("wallet-address")).toBeNull();
+    expect(screen.queryByTestId("wallet-password")).toBeNull();
+    expect(screen.queryByTestId("wallet-qr-file")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Save wallet" }),
+    ).toBeNull();
+  });
+
+  it("tells the owner an administrator owns this address", () => {
+    renderReadOnly();
+
+    expect(
+      screen.getByText(/administrator sets and changes this address/i),
+    ).toBeInTheDocument();
+  });
+
+  it("says nothing is configured until an admin sets it", () => {
+    renderReadOnly({ address: "" });
+
+    expect(screen.queryByTestId("wallet-readonly-address")).toBeNull();
+    expect(screen.getAllByText("Not configured yet").length).toBeGreaterThan(0);
+  });
+
+  it("keeps the uploaded QR visible for the owner", () => {
+    renderReadOnly({ qrUrl: QR_URL });
+
+    expect(screen.getByAltText("QR")).toHaveAttribute("src", QR_URL);
+  });
+});

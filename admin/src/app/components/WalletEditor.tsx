@@ -15,12 +15,14 @@ interface WalletEditorProps {
   saving?: boolean;
   saveLabel?: string;
   testId?: string;
+  readOnly?: boolean;
 }
 
-// Admin / Owner ရဲ့ payout address + QR code သတ်မှတ်တဲ့ form ကို
+// Admin ရဲ့ payout address + QR code သတ်မှတ်တဲ့ form ကို
 // /wallet နဲ့ /owners နှစ်ခုလုံးမှာ ပြန်သုံးနေသော shared component။
 // Payout လိပ်စာ ညှိတဲ့နေရာတိုင်းမှာ login password တောင်းတယ် — backend က
 // မစစ်ခင်ဘူး၊ ဒီ field က UX သီးသန့်။
+// Owner က ဒီကို readOnly နဲ့ပဲ မြင်ရတယ် — လိပ်စာ ရေးခွင့်မှာ admin သား။
 export default function WalletEditor({
   address,
   qrUrl,
@@ -31,6 +33,7 @@ export default function WalletEditor({
   saving = false,
   saveLabel,
   testId = "wallet-editor",
+  readOnly = false,
 }: WalletEditorProps) {
   const t = useT();
   const [isUploading, setIsUploading] = useState(false);
@@ -63,81 +66,111 @@ export default function WalletEditor({
       className="grid grid-cols-1 gap-4 lg:grid-cols-2"
     >
       <div className="space-y-3">
-        <label className="block text-xs font-semibold text-slate-500">
-          {t("admin.wallet.address")}
-          <input
-            data-testid="wallet-address"
-            type="text"
-            value={address}
-            onChange={(e) => onChange({ address: e.target.value })}
-            placeholder="TXxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal text-slate-700 outline-none focus:border-[#ff6600]"
-          />
-        </label>
+        {readOnly ? (
+          <div className="space-y-3">
+            <div>
+              <p className="text-xs font-semibold text-slate-500">
+                {t("admin.wallet.address")}
+              </p>
+              {address ? (
+                <p
+                  data-testid="wallet-readonly-address"
+                  className="mt-1 break-all rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-sm text-slate-700"
+                >
+                  {address}
+                </p>
+              ) : (
+                <p className="mt-1 text-sm text-slate-400">
+                  {t("admin.wallet.notSet")}
+                </p>
+              )}
+            </div>
 
-        <label className="block text-xs font-semibold text-slate-500">
-          {t("admin.wallet.password")}
-          <input
-            data-testid="wallet-password"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => onPasswordChange(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal text-slate-700 outline-none focus:border-[#ff6600]"
-          />
-          <span className="mt-1 block text-[11px] font-normal text-slate-400">
-            {t("admin.wallet.passwordHint")}
-          </span>
-        </label>
+            <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+              {t("admin.wallet.adminManaged")}
+            </p>
+          </div>
+        ) : (
+          <>
+            <label className="block text-xs font-semibold text-slate-500">
+              {t("admin.wallet.address")}
+              <input
+                data-testid="wallet-address"
+                type="text"
+                value={address}
+                onChange={(e) => onChange({ address: e.target.value })}
+                placeholder="TXxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal text-slate-700 outline-none focus:border-[#ff6600]"
+              />
+            </label>
 
-        <div className="space-y-1 pt-1">
-          <p className="text-xs font-semibold text-slate-500">
-            {t("admin.wallet.qr")}
-          </p>
-          <p className="text-[11px] text-slate-400">{t("admin.wallet.qrHint")}</p>
-        </div>
+            <label className="block text-xs font-semibold text-slate-500">
+              {t("admin.wallet.password")}
+              <input
+                data-testid="wallet-password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => onPasswordChange(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal text-slate-700 outline-none focus:border-[#ff6600]"
+              />
+              <span className="mt-1 block text-[11px] font-normal text-slate-400">
+                {t("admin.wallet.passwordHint")}
+              </span>
+            </label>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-50">
-            <Camera size={14} />
-            {isUploading ? t("admin.loading") : t("admin.wallet.uploadQr")}
-            <input
-              data-testid="wallet-qr-file"
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handleUpload}
-            />
-          </label>
+            <div className="space-y-1 pt-1">
+              <p className="text-xs font-semibold text-slate-500">
+                {t("admin.wallet.qr")}
+              </p>
+              <p className="text-[11px] text-slate-400">
+                {t("admin.wallet.qrHint")}
+              </p>
+            </div>
 
-          {qrUrl && (
-            <button
-              onClick={() => onChange({ qrUrl: "" })}
-              className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-600 transition hover:bg-red-100"
-            >
-              <Trash2 size={14} />
-              {t("admin.wallet.clearQr")}
-            </button>
-          )}
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-50">
+                <Camera size={14} />
+                {isUploading ? t("admin.loading") : t("admin.wallet.uploadQr")}
+                <input
+                  data-testid="wallet-qr-file"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleUpload}
+                />
+              </label>
 
-          <button
-            onClick={onSave}
-            disabled={
-              saving ||
-              isUploading ||
-              address.trim().length < 10 ||
-              password.trim() === ""
-            }
-            className="rounded-lg bg-[#ff6600] px-4 py-2 text-xs font-bold text-white transition hover:bg-orange-600 disabled:opacity-50"
-          >
-            {saveLabel ?? t("admin.wallet.save")}
-          </button>
-        </div>
+              {qrUrl && (
+                <button
+                  onClick={() => onChange({ qrUrl: "" })}
+                  className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-600 transition hover:bg-red-100"
+                >
+                  <Trash2 size={14} />
+                  {t("admin.wallet.clearQr")}
+                </button>
+              )}
 
-        {uploadError && (
-          <p className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">
-            {uploadError}
-          </p>
+              <button
+                onClick={onSave}
+                disabled={
+                  saving ||
+                  isUploading ||
+                  address.trim().length < 10 ||
+                  password.trim() === ""
+                }
+                className="rounded-lg bg-[#ff6600] px-4 py-2 text-xs font-bold text-white transition hover:bg-orange-600 disabled:opacity-50"
+              >
+                {saveLabel ?? t("admin.wallet.save")}
+              </button>
+            </div>
+
+            {uploadError && (
+              <p className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">
+                {uploadError}
+              </p>
+            )}
+          </>
         )}
       </div>
 

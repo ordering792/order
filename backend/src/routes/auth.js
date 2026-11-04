@@ -2,7 +2,7 @@ const router = require("express").Router();
 const authController = require("../controllers/authController");
 const ownerController = require("../controllers/ownerController");
 const walletController = require("../controllers/walletController");
-const { auth, adminOnly, ownerOnly } = require("../middleware/authMiddleware");
+const { auth, adminOnly } = require("../middleware/authMiddleware");
 const rateLimit = require("express-rate-limit");
 
 const loginLimit = rateLimit({
@@ -19,11 +19,12 @@ router.put("/language", auth, authController.updateLanguage);
 router.get("/languages", authController.getLanguages);
 router.put("/password", auth, authController.changePassword);
 
-// Payout wallet (admin / owner) နဲ့ user ရဲ့ deposit/withdraw လမ်းကြောင်း
+// Payout wallet ဆီ ငွေပို့လိပ်စာကို admin သားပဲ ရေးတယ် (owner က ဖတ်ရုံ)။
+// User ရဲ့ deposit/withdraw လမ်းကြောင်းက ဒီအောက်မှာ ဆက်ရှိတယ်။
 router.put(
   "/owner/crypto-address",
   auth,
-  ownerOnly,
+  adminOnly,
   walletController.updateOwnerCryptoAddress,
 );
 router.get("/deposit-info", auth, walletController.depositInfo);

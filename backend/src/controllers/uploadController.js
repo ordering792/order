@@ -1,6 +1,5 @@
 const crypto = require("crypto");
 const { z } = require("zod");
-const { isPayoutAccount } = require("../services/walletGuard");
 
 const purposeSchema = z.enum(["product", "deposit-proof", "wallet-qr"]);
 const AUTH_TTL_SECONDS = 10 * 60;
@@ -34,10 +33,10 @@ exports.authorize = (req, res) => {
     return res.status(403).json({ message: "Admin access required" });
   }
 
-  // Payout QR ကို admin panel က admin/owner သားပဲ ထည့်တယ် —
-  // ဒါကြောင့် ဒီ purpose ကို ordinary user ဆီ မပို့ဘူး။
-  if (parsed.data === "wallet-qr" && !isPayoutAccount(req.user)) {
-    return res.status(403).json({ message: "Payout account access required" });
+  // Payout QR ပုံက payout လိပ်စာရဲ့ အစိတ်အပိုင်း — ဒါကြောင့် wallet address
+  // နဲ့ တစ်ပြေးနဲ့ admin သားတင်ခွင့် ရှိတယ်။ Owner က ဖတ်ရုံ။
+  if (parsed.data === "wallet-qr" && req.user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
   }
 
   const { publicKey, privateKey, urlEndpoint } = getImageKitConfig();

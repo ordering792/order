@@ -711,12 +711,12 @@ describe("Transaction endpoints", () => {
   });
 
   describe("Crypto address (USDT TRC20)", () => {
-    it("owner updates their own crypto address", async () => {
-      const owner = await createUser("owner");
+    it("admin updates their own crypto address", async () => {
+      const admin = await createUser("admin");
 
       const res = await request(app)
         .put("/api/auth/owner/crypto-address")
-        .set("Authorization", `Bearer ${makeToken(owner)}`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
         .send({
           cryptoAddress: "TTrc20ExampleAddress123456789",
           password: "password123",
@@ -724,11 +724,13 @@ describe("Transaction endpoints", () => {
 
       expect(res.status).toBe(200);
 
-      const fresh = await User.findById(owner._id);
+      const fresh = await User.findById(admin._id);
       expect(fresh.cryptoAddress).toBe("TTrc20ExampleAddress123456789");
     });
 
-    it("refuses to move the payout address without the login password", async () => {
+    // Owner က သူ့ payout လိပ်စာကို ကိုယ်တိုင် မရေးတော့ဘူး — admin က Owners
+    // page မှာ ထည့်တယ်၊ owner က ဖတ်ရုံ။
+    it("refuses an owner writing their own payout address", async () => {
       const owner = await createUser("owner", {
         cryptoAddress: "TOldOwnerPayoutAddress111111111111",
       });
@@ -736,23 +738,42 @@ describe("Transaction endpoints", () => {
       const res = await request(app)
         .put("/api/auth/owner/crypto-address")
         .set("Authorization", `Bearer ${makeToken(owner)}`)
-        .send({ cryptoAddress: "TAttackerPayoutAddress222222222222" });
+        .send({
+          cryptoAddress: "TNewOwnerPayoutAddress222222222222",
+          password: "password123",
+        });
 
-      expect(res.status).toBe(400);
-      expect(res.body.message).toMatch(/password is required/i);
+      expect(res.status).toBe(403);
 
       const fresh = await User.findById(owner._id);
       expect(fresh.cryptoAddress).toBe("TOldOwnerPayoutAddress111111111111");
     });
 
-    it("refuses a wrong password and leaves the address alone", async () => {
-      const owner = await createUser("owner", {
-        cryptoAddress: "TOldOwnerPayoutAddress111111111111",
+    it("refuses to move the payout address without the login password", async () => {
+      const admin = await createUser("admin", {
+        cryptoAddress: "TOldAdminPayoutAddress111111111111",
       });
 
       const res = await request(app)
         .put("/api/auth/owner/crypto-address")
-        .set("Authorization", `Bearer ${makeToken(owner)}`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ cryptoAddress: "TAttackerPayoutAddress222222222222" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/password is required/i);
+
+      const fresh = await User.findById(admin._id);
+      expect(fresh.cryptoAddress).toBe("TOldAdminPayoutAddress111111111111");
+    });
+
+    it("refuses a wrong password and leaves the address alone", async () => {
+      const admin = await createUser("admin", {
+        cryptoAddress: "TOldAdminPayoutAddress111111111111",
+      });
+
+      const res = await request(app)
+        .put("/api/auth/owner/crypto-address")
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
         .send({
           cryptoAddress: "TAttackerPayoutAddress222222222222",
           password: "wrongpassword",
@@ -761,16 +782,16 @@ describe("Transaction endpoints", () => {
       expect(res.status).toBe(400);
       expect(res.body.message).toBe("Incorrect password");
 
-      const fresh = await User.findById(owner._id);
-      expect(fresh.cryptoAddress).toBe("TOldOwnerPayoutAddress111111111111");
+      const fresh = await User.findById(admin._id);
+      expect(fresh.cryptoAddress).toBe("TOldAdminPayoutAddress111111111111");
     });
 
     it("rejects an invalid crypto address payload", async () => {
-      const owner = await createUser("owner");
+      const admin = await createUser("admin");
 
       const res = await request(app)
         .put("/api/auth/owner/crypto-address")
-        .set("Authorization", `Bearer ${makeToken(owner)}`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
         .send({});
 
       expect(res.status).toBe(400);
