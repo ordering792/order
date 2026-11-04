@@ -700,6 +700,47 @@ describe("Admin & owner endpoints", () => {
       expect(res.body.source).toBe("admin");
     });
 
+    // Burn ကို admin wallet ကိုယ်တိုင် မထိဘူး — ဒါပေမဲ့ ငွေ လက်ခံတဲ့ တံခါးကို
+    // ပိတ်တယ် ဆိုတဲ့ အဓိပ္ပာယ်နဲ့ ကိုက်အောင် downline user ကို admin ဆီ ပြန်လှည့်တယ်။
+    it("routes the downline to the admin wallet when the owner is burned", async () => {
+      await createUser("admin", {
+        cryptoAddress: "ADMINWALLET000000000000000000001",
+        cryptoQrUrl: "https://example.com/admin-qr.png",
+      });
+      const owner = await createUser("owner", {
+        cryptoAddress: "OWNERWALLET000000000000000000001",
+        cryptoQrUrl: "https://example.com/owner-qr.png",
+        status: "burned",
+      });
+      const user = await createUser("user", { ownerId: owner._id });
+
+      const res = await request(app)
+        .get("/api/auth/deposit-info")
+        .set("Authorization", `Bearer ${makeToken(user)}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.cryptoAddress).toBe("ADMINWALLET000000000000000000001");
+      expect(res.body.qrUrl).toBe("https://example.com/admin-qr.png");
+      expect(res.body.source).toBe("admin");
+    });
+
+    it("keeps a burned owner out of the payee even when no admin wallet exists", async () => {
+      await createUser("admin", { cryptoAddress: null });
+      const owner = await createUser("owner", {
+        cryptoAddress: "OWNERWALLET000000000000000000001",
+        status: "burned",
+      });
+      const user = await createUser("user", { ownerId: owner._id });
+
+      const res = await request(app)
+        .get("/api/auth/deposit-info")
+        .set("Authorization", `Bearer ${makeToken(user)}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.cryptoAddress).toBeNull();
+      expect(res.body.source).toBeNull();
+    });
+
     it("returns null when nobody has configured an address", async () => {
       const user = await createUser("user");
 
@@ -1135,7 +1176,7 @@ describe("Admin & owner endpoints", () => {
       expect(untouched.tokenVersion ?? 0).toBe(0);
     });
 
-    it("owners cannot reset passwords", async () => {
+    it("lets an owner reset a downline user's password", async () => {
       const owner = await createUser("owner");
       const target = await createUser("user", { ownerId: owner._id });
 
@@ -1144,7 +1185,56 @@ describe("Admin & owner endpoints", () => {
         .set("Authorization", `Bearer ${makeToken(owner)}`)
         .send({ password: "newpass456" });
 
+      expect(res.status).toBe(200);
+
+      const updated = await User.findById(target._id).select("+passwordHash");
+      expect(await bcrypt.compare("newpass456", updated.passwordHash)).toBe(true);
+      expect(updated.tokenVersion).toBe(1);
+    });
+
+    it("refuses an owner resetting another owner's user", async () => {
+      const owner = await createUser("owner");
+      const other = await createUser("owner");
+      const target = await createUser("user", { ownerId: other._id });
+
+      const res = await request(app)
+        .put(`/api/admin/users/${target._id}/password`)
+        .set("Authorization", `Bearer ${makeToken(owner)}`)
+        .send({ password: "newpass456" });
+
       expect(res.status).toBe(403);
+
+      const untouched = await User.findById(target._id).select("+passwordHash");
+      expect(await bcrypt.compare("password123", untouched.passwordHash)).toBe(
+        true,
+      );
+      expect(untouched.tokenVersion ?? 0).toBe(0);
+    });
+
+    it("refuses an owner resetting a user with no owner link", async () => {
+      const owner = await createUser("owner");
+      const orphan = await createUser("user");
+
+      const res = await request(app)
+        .put(`/api/admin/users/${orphan._id}/password`)
+        .set("Authorization", `Bearer ${makeToken(owner)}`)
+        .send({ password: "newpass456" });
+
+      expect(res.status).toBe(403);
+    });
+
+    it("refuses an owner resetting his own or another owner's password", async () => {
+      const owner = await createUser("owner");
+      const peer = await createUser("owner");
+
+      for (const target of [owner, peer]) {
+        const res = await request(app)
+          .put(`/api/admin/users/${target._id}/password`)
+          .set("Authorization", `Bearer ${makeToken(owner)}`)
+          .send({ password: "newpass456" });
+
+        expect(res.status).toBe(403);
+      }
     });
 
     it("rejects a password that trims below six characters", async () => {

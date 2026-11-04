@@ -104,6 +104,43 @@ describe("Auth endpoints", () => {
       expect(res.status).toBe(401);
     });
 
+    // Burn က auth middleware တစ်နေရာမှာပဲ စစ်ထားရင် login က token ထုတ်ပေးနေဆဲ
+    // ဖြစ်ပြီး သုံးသူ့ဆီ ဘာစာမှ မပြဘူး — ဒီနေရာမှာပဲ ပိတ်ပြီး ဖြေကြားတယ်။
+    it("refuses a burned account and says why", async () => {
+      await User.updateOne({ phone: "09987654321" }, { status: "burned" });
+
+      const res = await request(app)
+        .post("/api/auth/login")
+        .send({ phone: "09987654321", password: "password123" });
+
+      expect(res.status).toBe(403);
+      expect(res.body.token).toBeUndefined();
+      expect(res.body.message).toMatch(/deactivated/);
+    });
+
+    it("keeps the burn hidden behind a wrong password", async () => {
+      await User.updateOne({ phone: "09987654321" }, { status: "burned" });
+
+      const res = await request(app)
+        .post("/api/auth/login")
+        .send({ phone: "09987654321", password: "wrongpassword" });
+
+      expect(res.status).toBe(401);
+      expect(res.body.message).toBe("Invalid phone or password");
+    });
+
+    it("lets the account back in once it is un-burned", async () => {
+      await User.updateOne({ phone: "09987654321" }, { status: "burned" });
+      await User.updateOne({ phone: "09987654321" }, { status: "online" });
+
+      const res = await request(app)
+        .post("/api/auth/login")
+        .send({ phone: "09987654321", password: "password123" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.token).toBeDefined();
+    });
+
     it("reports the license flag so the client can route to /license", async () => {
       const fresh = await request(app)
         .post("/api/auth/login")

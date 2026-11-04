@@ -73,6 +73,21 @@ function post(token, body) {
     .send(body);
 }
 
+// Account ဖွင့်ချိန်နဲ့ စာမွေးချိန် မီလီစက္ကန့်အတွင်း ကျရင် test flake ဖြစ်လို့
+// စာကို တစ်နာရီ အရင်ကနေ ရှိတဲ့ဟန်နဲ့ ပြန်သိမ်းတယ်။
+async function backdate(announcementId, hours = 1) {
+  await Announcement.updateOne(
+    { _id: announcementId },
+    { $set: { createdAt: new Date(Date.now() - hours * 3600_000) } },
+  );
+}
+
+function unread(token) {
+  return request(app)
+    .get("/api/notifications/unread")
+    .set("Authorization", `Bearer ${token}`);
+}
+
 describe("Announcements", () => {
   describe("POST /api/announcements", () => {
     it("stores a broadcast when no recipient is given", async () => {
@@ -144,7 +159,7 @@ describe("Announcements", () => {
       expect(await Announcement.countDocuments()).toBe(0);
     });
 
-    it("keeps publishing to admins only", async () => {
+    it("keeps publishing to admins and owners", async () => {
       const user = await createUser("user");
 
       const res = await post(makeToken(user), {
@@ -154,6 +169,130 @@ describe("Announcements", () => {
 
       expect(res.status).toBe(403);
       expect(await Announcement.countDocuments()).toBe(0);
+    });
+  });
+
+  describe("POST /api/announcements as an owner", () => {
+    it("sends to a user under him", async () => {
+      const owner = await createUser("owner");
+      const mine = await createUser("user", { ownerId: owner._id });
+
+      const res = await post(makeToken(owner), {
+        title: "Round starts",
+        content: "Check your plan.",
+        recipientId: mine._id.toString(),
+      });
+
+      expect(res.status).toBe(201);
+      expect(res.body.announcement.recipientId).toBe(mine._id.toString());
+      expect(res.body.announcement.userId).toBe(owner._id.toString());
+    });
+
+    it("refuses another owner's user", async () => {
+      const owner = await createUser("owner");
+      const rival = await createUser("owner");
+      const theirs = await createUser("user", { ownerId: rival._id });
+
+      const res = await post(makeToken(owner), {
+        title: "Not yours",
+        content: "Body",
+        recipientId: theirs._id.toString(),
+      });
+
+      expect(res.status).toBe(403);
+      expect(await Announcement.countDocuments()).toBe(0);
+    });
+
+    it("refuses a user with no owner", async () => {
+      const owner = await createUser("owner");
+      const orphan = await createUser("user");
+
+      const res = await post(makeToken(owner), {
+        title: "Orphan",
+        content: "Body",
+        recipientId: orphan._id.toString(),
+      });
+
+      expect(res.status).toBe(403);
+      expect(await Announcement.countDocuments()).toBe(0);
+    });
+
+    it("refuses an admin and a fellow owner", async () => {
+      const owner = await createUser("owner");
+      const admin = await createUser("admin");
+      const rival = await createUser("owner");
+
+      for (const target of [admin, rival]) {
+        const res = await post(makeToken(owner), {
+          title: "Upwards",
+          content: "Body",
+          recipientId: target._id.toString(),
+        });
+
+        expect(res.status).toBe(403);
+      }
+
+      expect(await Announcement.countDocuments()).toBe(0);
+    });
+
+    it("writes one addressed row per active user under him", async () => {
+      const owner = await createUser("owner");
+      const one = await createUser("user", { ownerId: owner._id });
+      const two = await createUser("user", { ownerId: owner._id });
+      await createUser("user", { ownerId: owner._id, status: "burned" });
+
+      const rival = await createUser("owner");
+      const outsider = await createUser("user", { ownerId: rival._id });
+
+      const res = await post(makeToken(owner), {
+        title: "Tonight",
+        content: "Withdrawals pause at 10 PM.",
+      });
+
+      expect(res.status).toBe(201);
+      expect(res.body.created).toBe(2);
+
+      const rows = await Announcement.find({}).lean();
+
+      expect(rows).toHaveLength(2);
+      expect(rows.map((row) => row.recipientId.toString()).sort()).toEqual(
+        [one._id.toString(), two._id.toString()].sort(),
+      );
+      expect(
+        rows.every((row) => row.userId.toString() === owner._id.toString()),
+      ).toBe(true);
+
+      // Owner ရဲ့ broadcast က system တစ်ခုလုံး broadcast (recipientId null) မဖြစ်ရဘူး။
+      expect(await Announcement.countDocuments({ recipientId: null })).toBe(0);
+      expect((await get(makeToken(outsider))).body.announcements).toHaveLength(
+        0,
+      );
+    });
+
+    it("refuses a broadcast when he has no users", async () => {
+      const owner = await createUser("owner");
+
+      const res = await post(makeToken(owner), {
+        title: "Anyone",
+        content: "Body",
+      });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/no users/i);
+      expect(await Announcement.countDocuments()).toBe(0);
+    });
+
+    it("counts an owner broadcast for each of his users only", async () => {
+      const owner = await createUser("owner");
+      const mine = await createUser("user", { ownerId: owner._id });
+
+      const rival = await createUser("owner");
+      const outsider = await createUser("user", { ownerId: rival._id });
+
+      await post(makeToken(owner), { title: "Tonight", content: "Pause." });
+
+      expect((await unread(makeToken(mine))).body.count).toBe(1);
+      expect((await unread(makeToken(outsider))).body.count).toBe(0);
     });
   });
 
@@ -241,6 +380,51 @@ describe("Announcements", () => {
       ]);
     });
 
+    it("shows an owner his own sends but not another owner's targeted rows", async () => {
+      const admin = await createUser("admin");
+      const owner = await createUser("owner");
+      const mine = await createUser("user", { ownerId: owner._id });
+
+      const rival = await createUser("owner");
+      const theirs = await createUser("user", { ownerId: rival._id });
+
+      await post(makeToken(admin), { title: "Open", content: "All." });
+      await post(makeToken(owner), {
+        title: "Mine",
+        content: "For my user.",
+        recipientId: mine._id.toString(),
+      });
+      await post(makeToken(rival), {
+        title: "Theirs",
+        content: "For their user.",
+        recipientId: theirs._id.toString(),
+      });
+
+      const res = await get(makeToken(owner));
+
+      expect(res.body.announcements.map((a) => a.title).sort()).toEqual([
+        "Mine",
+        "Open",
+      ]);
+    });
+
+    it("narrows an owner's list with the audience param", async () => {
+      const admin = await createUser("admin");
+      const owner = await createUser("owner");
+      await createUser("user", { ownerId: owner._id });
+
+      await post(makeToken(admin), { title: "Open", content: "All." });
+      await post(makeToken(owner), { title: "Mine", content: "Fan-out." });
+
+      const personal = await get(makeToken(owner), "?audience=personal");
+      const broadcast = await get(makeToken(owner), "?audience=all");
+
+      expect(personal.body.announcements.map((a) => a.title)).toEqual(["Mine"]);
+      expect(broadcast.body.announcements.map((a) => a.title)).toEqual([
+        "Open",
+      ]);
+    });
+
     it("filters the admin list by audience", async () => {
       const admin = await createUser("admin");
       const target = await createUser("user");
@@ -289,6 +473,63 @@ describe("Announcements", () => {
       const res = await get(makeToken(admin), "?audience=someone");
 
       expect(res.status).toBe(400);
+    });
+  });
+
+  describe("visibility for a newly registered account", () => {
+    it("hides a broadcast written before the account existed", async () => {
+      const admin = await createUser("admin");
+      const created = await post(makeToken(admin), {
+        title: "Old news",
+        content: "Written before you joined.",
+      });
+      await backdate(created.body.announcement._id);
+
+      const newcomer = await createUser("user");
+
+      expect((await get(makeToken(newcomer))).body.announcements).toHaveLength(
+        0,
+      );
+    });
+
+    it("shows a broadcast written after the account opened", async () => {
+      const admin = await createUser("admin");
+      const newcomer = await createUser("user");
+
+      await post(makeToken(admin), {
+        title: "Fresh",
+        content: "Written after you joined.",
+      });
+
+      expect(
+        (await get(makeToken(newcomer))).body.announcements.map((a) => a.title),
+      ).toEqual(["Fresh"]);
+    });
+
+    it("keeps the badge empty for an account that missed the broadcast", async () => {
+      const admin = await createUser("admin");
+      const created = await post(makeToken(admin), {
+        title: "Old news",
+        content: "Body",
+      });
+      await backdate(created.body.announcement._id);
+
+      const newcomer = await createUser("user");
+
+      expect((await unread(makeToken(newcomer))).body.count).toBe(0);
+    });
+
+    it("still shows an admin the whole broadcast history", async () => {
+      const admin = await createUser("admin");
+      const created = await post(makeToken(admin), {
+        title: "Old news",
+        content: "Body",
+      });
+      await backdate(created.body.announcement._id);
+
+      expect(
+        (await get(makeToken(admin))).body.announcements.map((a) => a.title),
+      ).toEqual(["Old news"]);
     });
   });
 
