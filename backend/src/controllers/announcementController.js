@@ -6,6 +6,7 @@ const asyncHandler = require("../utils/asyncHandler");
 const {
   visibleAnnouncementFilter,
 } = require("../services/announcementVisibility");
+const { ownerUserIds } = require("../services/ownershipService");
 
 const createSchema = z.object({
   title: z.string().min(1).max(200),
@@ -27,6 +28,8 @@ exports.create = asyncHandler(async (req, res) => {
     });
   }
 
+  const isOwner = req.user.role === "owner";
+
   // recipientId ပေးလာရင် တကယ်ရှိတဲ့ account ဖြစ်ရမယ် — မှားနေရင် စာက
   // ဘယ်သူမှ မမြင်ရတဲ့ row အဖြစ် ကျန်သွားမယ်။
   let recipientId = null;
@@ -37,14 +40,53 @@ exports.create = asyncHandler(async (req, res) => {
     }
 
     const recipient = await User.findById(parsed.data.recipientId).select(
-      "_id status",
+      "_id status ownerId",
     );
 
     if (!recipient || recipient.status === "burned") {
       return res.status(400).json({ message: "Recipient not found" });
     }
 
+    // Owner က ကိုယ့် downline ထဲက user ကိုပဲ ပို့လို့ရတယ် (ကိုယ်တိုင်ပါ — picker ထဲမှာ
+    // listUsers ရဲ့ scope အတိုင်း ပေါ်နေလို့)။ တခြား owner/admin row ကို မရဘူး။
+    if (
+      isOwner &&
+      !recipient._id.equals(req.user._id) &&
+      (!recipient.ownerId || !recipient.ownerId.equals(req.user._id))
+    ) {
+      return res.status(403).json({
+        message: "You can only send announcements to your own users",
+      });
+    }
+
     recipientId = recipient._id;
+  }
+
+  // Owner ရဲ့ "All users" ဆိုတာ သူ့ downline အားလုံး — recipientId null (system
+  // တစ်ခုလုံး) မဖြစ်ရအောင် တစ်ယောက်ချင်း row ခွဲရေးတယ်။ ဒါကြောင့် customer ဘက်က
+  // visibility filter / unread count / getById ကို ပြင်စရာ မလိုဘူး။
+  if (isOwner && !recipientId) {
+    const downline = await ownerUserIds(req.user._id);
+    const targets = downline.length
+      ? await User.find({ _id: { $in: downline }, status: { $ne: "burned" } })
+          .select("_id")
+          .lean()
+      : [];
+
+    if (!targets.length) {
+      return res.status(400).json({ message: "No users to notify" });
+    }
+
+    await Announcement.insertMany(
+      targets.map((target) => ({
+        userId: req.user._id,
+        recipientId: target._id,
+        title: parsed.data.title,
+        content: parsed.data.content,
+      })),
+    );
+
+    return res.status(201).json({ created: targets.length });
   }
 
   const announcement = await Announcement.create({
@@ -67,18 +109,36 @@ exports.list = asyncHandler(async (req, res) => {
     });
   }
 
-  // Admin က အားလုံးမြင်ရမယ် (ကိုယ်ပို့ထားတာတွေကို ပြန်စစ်ဖို့)။ တခြား role က
+  // Admin က အားလုံးမြင်ရမယ် (ကိုယ်ပို့ထားတာတွေကို ပြန်စစ်ဖို့)။ Owner က ကိုယ်ပို့ထားတာ
+  // နဲ့ broadcast တွေပဲ — သူပို့တဲ့ targeted row တွေက သူ့ဆီ ပြန်ပေါ်ရမယ်။ တခြား role က
   // broadcast နဲ့ ကိုယ့်ဆီရောက်တဲ့ စာပဲ — ဒီ filter က security boundary ဖြစ်တယ်၊
-  // frontend မှာ ဖျောက်တာက မဟုတ်ဘူး။ Base ကို service မှာ ယူပြီး (unread count ကလည်း
-  // အတူတူ သုံးတယ်) admin က audience နဲ့ ထပ်ဖြတ်တယ်။
-  let filter = visibleAnnouncementFilter(req.user);
+  // frontend မှာ ဖျောက်တာက မဟုတ်ဘူး။
+  let filter;
 
   if (req.user.role === "admin") {
-    if (parsed.data.audience === "all") {
-      filter = { recipientId: null };
-    } else if (parsed.data.audience === "personal") {
-      filter = { recipientId: { $ne: null } };
-    }
+    filter = {};
+  } else if (req.user.role === "owner") {
+    filter = {
+      $or: [
+        { userId: req.user._id },
+        { recipientId: null },
+        { recipientId: req.user._id },
+      ],
+    };
+  } else {
+    filter = visibleAnnouncementFilter(req.user);
+  }
+
+  // Audience filter ကို admin/owner panel မှာပဲ သုံးတယ် — customer ရဲ့ list ကို
+  // param နဲ့ ကျယ်သွားအောင် မလုပ်ရ။
+  if (parsed.data.audience && req.user.role !== "user") {
+    const narrowed =
+      parsed.data.audience === "all"
+        ? { recipientId: null }
+        : { recipientId: { $ne: null } };
+
+    filter =
+      req.user.role === "admin" ? narrowed : { $and: [filter, narrowed] };
   }
 
   const announcements = await Announcement.find(filter)

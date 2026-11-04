@@ -52,7 +52,6 @@ const NAV_ITEMS: NavItem[] = [
     href: "/announcements",
     labelKey: "admin.nav.announcements",
     icon: <Megaphone size={18} />,
-    adminOnly: true,
   },
   {
     href: "/owners",

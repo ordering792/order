@@ -1,8 +1,9 @@
 const router = require("express").Router();
 const controller = require("../controllers/announcementController");
-const { auth, adminOnly } = require("../middleware/authMiddleware");
+const { auth, adminOrOwner } = require("../middleware/authMiddleware");
 
-router.post("/", auth, adminOnly, controller.create);
+// Owner လည်း ပို့လို့ရတယ် — ဒါပေမဲ့ သူ့ downline ကိုပဲ (controller မှာ စစ်)။
+router.post("/", auth, adminOrOwner, controller.create);
 router.get("/", auth, controller.list);
 router.get("/:id", auth, controller.getById);
 

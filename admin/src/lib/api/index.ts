@@ -436,10 +436,15 @@ export const api = {
     content: string;
     recipientId?: string | null;
   }) =>
-    request<{ announcement: ApiAnnouncement }>("/announcements", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
+    // Owner ရဲ့ "All users" က downline တစ်ယောက်ချင်း row ခွဲရေးလို့ announcement
+    // တစ်ခုတည်း ပြန်မရဘူး — created count ပြန်တယ်။
+    request<{ announcement?: ApiAnnouncement; created?: number }>(
+      "/announcements",
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    ),
 
   adminListAnnouncements: (audience?: "all" | "personal") =>
     request<{ announcements: ApiAnnouncement[] }>(
