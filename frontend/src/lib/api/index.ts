@@ -116,6 +116,16 @@ export const api = {
   myTransactions: () =>
     request<{ transactions: ApiTransaction[] }>("/transactions"),
 
+  // ---- Notifications ----
+  notificationUnreadCount: () =>
+    request<{ count: number }>("/notifications/unread"),
+
+  markNotificationsSeen: () =>
+    request<{ count: number }>("/notifications/seen", {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+
   // ---- Orders / tasks ----
   myTasks: () => request<{ tasks: ApiTask[] }>("/tasks/my-tasks"),
 

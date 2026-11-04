@@ -17,12 +17,14 @@ jest.mock("@/lib/api", () => ({
     get: jest.fn(),
     myTransactions: jest.fn(),
     myOrders: jest.fn(),
+    markNotificationsSeen: jest.fn(),
   },
 }));
 
 const mockGet = api.get as jest.Mock;
 const mockMyTransactions = api.myTransactions as jest.Mock;
 const mockMyOrders = api.myOrders as jest.Mock;
+const mockMarkSeen = api.markNotificationsSeen as jest.Mock;
 
 const transaction = (
   overrides: Partial<ApiTransaction> = {},
@@ -53,6 +55,7 @@ beforeEach(() => {
   mockGet.mockResolvedValue({ announcements: [] });
   mockMyTransactions.mockResolvedValue({ transactions: [] });
   mockMyOrders.mockResolvedValue({ tasks: [], plan: null });
+  mockMarkSeen.mockResolvedValue({ count: 0 });
 });
 
 describe("notification feed", () => {
@@ -157,5 +160,43 @@ describe("notification feed", () => {
 
     expect(screen.getByText("$1.00 is awaiting review")).toBeInTheDocument();
     expect(screen.queryByText("$25.00 is awaiting review")).toBeNull();
+  });
+});
+
+describe("read stamp for the home badge", () => {
+  beforeEach(() => {
+    mockMarkSeen.mockClear();
+  });
+
+  it("stamps the feed read once it is on screen", async () => {
+    mockGet.mockResolvedValue({
+      announcements: [
+        {
+          _id: "ann-1",
+          title: "System maintenance",
+          content: "Tonight at 10pm",
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    });
+
+    openNotifications();
+
+    await waitFor(() => expect(mockMarkSeen).toHaveBeenCalledTimes(1));
+  });
+
+  // ဘယ် source မှ မရလို့ feed အလွတ်ဖြစ်တဲ့အခါ seen ချရင် အသစ်တွေ
+  // ပျောက်သွားမယ် — badge ကို မဖျောက်ဘူး။
+  it("leaves the stamp alone when nothing could be loaded", async () => {
+    mockGet.mockRejectedValue(new Error("network down"));
+    mockMyTransactions.mockRejectedValue(new Error("network down"));
+
+    openNotifications();
+
+    await waitFor(() =>
+      expect(screen.getByText("No notifications yet")).toBeInTheDocument(),
+    );
+
+    expect(mockMarkSeen).not.toHaveBeenCalled();
   });
 });

@@ -73,6 +73,14 @@ const userSchema = new mongoose.Schema(
       maxlength: 300,
     },
 
+    // Home ပေါ်က notification badge အတွက် — ဒီအချိန်နောက် မွေးတဲ့ စာ/transaction
+    // တွေကို "အသစ်" လို့ ရေတွက်တယ်။ Notifications page ဝင်တိုင်း now ဖြစ်။
+    // null ဆို ဘယ်တော့မှ မဖတ်သေးလို့ အားလုံး အသစ်။
+    notificationsSeenAt: {
+      type: Date,
+      default: null,
+    },
+
     balance: {
       type: mongoose.Schema.Types.Decimal128,
       default: "0.00",

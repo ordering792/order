@@ -3,6 +3,9 @@ const mongoose = require("mongoose");
 const Announcement = require("../models/Annoncement");
 const User = require("../models/User");
 const asyncHandler = require("../utils/asyncHandler");
+const {
+  visibleAnnouncementFilter,
+} = require("../services/announcementVisibility");
 
 const createSchema = z.object({
   title: z.string().min(1).max(200),
@@ -66,12 +69,11 @@ exports.list = asyncHandler(async (req, res) => {
 
   // Admin က အားလုံးမြင်ရမယ် (ကိုယ်ပို့ထားတာတွေကို ပြန်စစ်ဖို့)။ တခြား role က
   // broadcast နဲ့ ကိုယ့်ဆီရောက်တဲ့ စာပဲ — ဒီ filter က security boundary ဖြစ်တယ်၊
-  // frontend မှာ ဖျောက်တာက မဟုတ်ဘူး။
-  let filter = { $or: [{ recipientId: null }, { recipientId: req.user._id }] };
+  // frontend မှာ ဖျောက်တာက မဟုတ်ဘူး။ Base ကို service မှာ ယူပြီး (unread count ကလည်း
+  // အတူတူ သုံးတယ်) admin က audience နဲ့ ထပ်ဖြတ်တယ်။
+  let filter = visibleAnnouncementFilter(req.user);
 
   if (req.user.role === "admin") {
-    filter = {};
-
     if (parsed.data.audience === "all") {
       filter = { recipientId: null };
     } else if (parsed.data.audience === "personal") {

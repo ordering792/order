@@ -63,19 +63,33 @@ export default function NotificationsPage() {
   const load = useCallback(() => {
     setLoading(true);
 
+    // Feed ကို ပြပြီးမှ badge ကို ရပ်တယ် — ဘယ် source မှ မရလို့ feed အလွတ်
+    // ဖြစ်သွားချိန်မှာ seen တံဆိပ်ချရင် အသစ်တွေ ပျောက်သွားမလို့။
+    let loaded = 0;
+
     Promise.all([
       api
         .get<{ announcements: Announcement[] }>("/announcements")
-        .then((res) => res.announcements)
+        .then((res) => {
+          loaded += 1;
+          return res.announcements;
+        })
         .catch(() => []),
       api
         .myTransactions()
-        .then((res) => res.transactions)
+        .then((res) => {
+          loaded += 1;
+          return res.transactions;
+        })
         .catch(() => []),
     ])
       .then(([announcementList, transactionList]) => {
         setAnnouncements(announcementList);
         setTransactions(transactionList);
+
+        if (loaded > 0) {
+          api.markNotificationsSeen().catch(() => {});
+        }
       })
       .finally(() => setLoading(false));
   }, []);

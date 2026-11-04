@@ -1,7 +1,7 @@
 // src/app/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -73,6 +73,35 @@ export default function DashboardPage() {
     }
   }, [loading, user]);
 
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const loadUnread = useCallback(() => {
+    api
+      .notificationUnreadCount()
+      .then((res) => setUnreadCount(res.count))
+      .catch(() => {});
+  }, []);
+
+  // Badge က pull-based — home ပြန်ရောက်တိုင်း (remount) နဲ့ ဖုန်း/app ပြန်ဖွင့်တိုင်း
+  // မေးတယ်။ Socket fan-out ပြဿနာ ကာလုံ့ notification အတွက် push မသုံးသေးဘူး။
+  useEffect(() => {
+    if (loading || !user) return;
+
+    loadUnread();
+
+    const refresh = () => {
+      if (document.visibilityState === "visible") loadUnread();
+    };
+
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [loading, user, loadUnread]);
+
   if (loading || !user) {
     return null;
   }
@@ -128,7 +157,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-4 gap-2 px-4 py-6 text-center">
-        <QuickAction icon={<Bell size={26} />} label={t("home.notifications")} href="/notifications" />
+        <QuickAction icon={<Bell size={26} />} label={t("home.notifications")} href="/notifications" badge={unreadCount} />
         <QuickAction icon={<Wallet size={26} />} label={t("home.deposit")} href="/deposit" />
         <QuickAction icon={<CreditCard size={26} />} label={t("home.withdraw")} href="/withdraw" />
         <QuickAction icon={<Gift size={26} />} label={t("home.inviteFriends")} href="/invite" />
@@ -197,11 +226,22 @@ export default function DashboardPage() {
   );
 }
 
-function QuickAction({ icon, label, href, small = false }: { icon: React.ReactNode, label: string, href: string, small?: boolean }) {
+function QuickAction({ icon, label, href, small = false, badge = 0 }: { icon: React.ReactNode, label: string, href: string, small?: boolean, badge?: number }) {
+  const t = useT();
+
   return (
     <Link href={href} className="flex flex-col items-center cursor-pointer group">
-      <div className="w-14 h-14 bg-gradient-to-b from-amber-400 to-amber-600 rounded-full flex items-center justify-center text-white shadow-md border-2 border-amber-200 group-hover:scale-105 transition">
+      <div className="relative w-14 h-14 bg-gradient-to-b from-amber-400 to-amber-600 rounded-full flex items-center justify-center text-white shadow-md border-2 border-amber-200 group-hover:scale-105 transition">
         {icon}
+        {badge > 0 && (
+          <span
+            data-testid="notification-badge"
+            aria-label={t("home.unreadCount", { count: badge })}
+            className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 grid place-items-center rounded-full bg-red-500 border-2 border-white text-[10px] font-bold leading-none text-white"
+          >
+            {badge > 99 ? "99+" : badge}
+          </span>
+        )}
       </div>
       <span className={`font-medium text-gray-700 mt-2 ${small ? 'text-[11px] leading-tight' : 'text-xs'}`}>
         {label}
