@@ -481,12 +481,24 @@ exports.resetUserPassword = asyncHandler(async (req, res) => {
     });
   }
 
+  // Owner က ကိုယ့် downline user (role=user) ကိုသာ reset လုပ်နိုင်တယ် — listUsers ရဲ့
+  // scope နဲ့ တစ်ပြေးညီ။ ကိုယ်တိုင် (role=owner) အပါအဝင် owner/admin row နဲ့ ownerId
+  // မပါသော user ကို မရဘူး။
+  if (
+    req.user.role === "owner" &&
+    (user.role !== "user" || !user.ownerId || !user.ownerId.equals(req.user._id))
+  ) {
+    return res.status(403).json({
+      message: "Owners can only reset the passwords of their own users",
+    });
+  }
+
   user.passwordHash = await bcrypt.hash(password, 10);
   user.tokenVersion = (user.tokenVersion ?? 0) + 1;
   await user.save();
 
   console.log(
-    `[audit] admin=${req.user._id} reset password for user=${user._id}`,
+    `[audit] actor=${req.user.role}:${req.user._id} reset password for user=${user._id}`,
   );
 
   res.json({ message: "Password updated" });

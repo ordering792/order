@@ -261,13 +261,43 @@ describe("Admin users page", () => {
     expect(screen.getByRole("button", { name: "Reset" })).toBeInTheDocument();
   });
 
-  it("hides password and action controls from owners", async () => {
+  it("gives owners the reset control but keeps the rest admin-only", async () => {
     await renderPage("owner");
 
-    expect(screen.queryByText("Password")).toBeNull();
+    expect(screen.getByText("Password")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reset" })).toBeInTheDocument();
     expect(screen.queryByText("Actions")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Reset" })).toBeNull();
     expect(screen.queryByRole("button", { name: "+" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Change" })).toBeNull();
+  });
+
+  it("hides the reset control from an owner on his own row", async () => {
+    listUsers([row({ role: "owner", name: "Panel Owner" })]);
+    await renderPage("owner");
+
+    expect(screen.queryByRole("button", { name: "Reset" })).toBeNull();
+  });
+
+  it("lets an owner reset a downline user's password", async () => {
+    const user = userEvent.setup();
+    await renderPage("owner");
+
+    await user.click(screen.getByRole("button", { name: "Reset" }));
+
+    const input = await screen.findByTestId("reset-password");
+    await user.clear(input);
+    await user.type(input, "ownerpass1");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(api.adminResetUserPassword).toHaveBeenCalledWith(
+        BASE_ROW._id,
+        "ownerpass1",
+      ),
+    );
+    expect(
+      await screen.findByText("Password updated for Ko Ko"),
+    ).toBeInTheDocument();
   });
 
   it("refuses to reset an admin account from the panel", async () => {

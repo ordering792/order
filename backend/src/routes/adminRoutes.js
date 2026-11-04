@@ -13,9 +13,10 @@ router.get("/order-board", auth, adminOrOwner, controller.orderBoard);
 // Role / status ပြောင်းခြင်းကို admin သာ လုပ်ခွင့်ရှိတယ်။
 router.patch("/users/:id", auth, adminOnly, controller.updateUser);
 
-// Password reset နဲ့ balance ညှိတာ — admin သာ (owner က downline support ကို
-// panel မှာ ကိုယ်တိုင် မပြင်နိုင်)။ Target က admin ဆို controller မှာ 403။
-router.put("/users/:id/password", auth, adminOnly, controller.resetUserPassword);
+// Password reset ကို admin နဲ့ owner နှစ်ယောက်လုံး လုပ်လို့ရတယ် — owner က သူ့
+// downline user (role=user) တွေကိုပဲ (controller မှာ စစ်)။ Balance ညှိတာ admin သာ။
+// Target က admin ဆို controller မှာ 403။
+router.put("/users/:id/password", auth, adminOrOwner, controller.resetUserPassword);
 router.post("/users/:id/balance", auth, adminOnly, controller.adjustUserBalance);
 
 // Withdraw ပို့ address — admin က user/owner နှစ်ခုလုံး ပြောင်းလို့ရတယ်။

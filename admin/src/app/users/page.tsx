@@ -209,6 +209,11 @@ export default function AdminUsersPage() {
         ? t("admin.role.owner")
         : t("admin.role.user");
 
+  // Owner က ကိုယ့် downline user (role=user) ကိုသာ reset လုပ်နိုင်တယ် — backend ရဲ့
+  // rule အတိုင်း။ Admin က admin row ကလွဲရင် အားလုံး ရတယ်။
+  const canResetPassword = (target: ApiAdminUser) =>
+    isAdmin ? target.role !== "admin" : target.role === "user";
+
   // Online/Offline က backend က lastSeenAt ကနေ တွက်ပေးတဲ့ `online` ဖြစ်တယ်။
   // `status` field ကို Burn/Un-burn အလံအဖြစ်ပဲ သုံးတော့မယ်။
   const statusLabel = (user: ApiAdminUser) =>
@@ -223,7 +228,7 @@ export default function AdminUsersPage() {
       ? undefined
       : t("admin.status.lastSeen", { time: dateTime(user.lastSeenAt) });
 
-  const columnCount = isAdmin ? 12 : 9;
+  const columnCount = isAdmin ? 12 : 10;
 
   return (
     <div className="space-y-4">
@@ -320,7 +325,7 @@ export default function AdminUsersPage() {
               <th className="px-4 py-3">{t("admin.field.inviteCode")}</th>
               <th className="px-4 py-3">{t("admin.field.balance")}</th>
               <th className="px-4 py-3">{t("admin.field.wallet")}</th>
-              {isAdmin && <th className="px-4 py-3">{t("admin.field.password")}</th>}
+              <th className="px-4 py-3">{t("admin.field.password")}</th>
               <th className="px-4 py-3">{t("admin.field.ipDevice")}</th>
               <th className="px-4 py-3">{t("admin.field.status")}</th>
               <th className="px-4 py-3">{t("admin.field.role")}</th>
@@ -393,25 +398,23 @@ export default function AdminUsersPage() {
                       )}
                     </div>
                   </td>
-                  {isAdmin && (
-                    <td className="px-4 py-3">
-                      {u.role === "admin" ? (
-                        <span className="text-xs text-slate-400">{PLACEHOLDER}</span>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs tracking-widest text-slate-400">
-                            ••••••
-                          </span>
-                          <button
-                            onClick={() => setResetTarget(u)}
-                            className="rounded-md border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50"
-                          >
-                            {t("admin.users.reset")}
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                  )}
+                  <td className="px-4 py-3">
+                    {canResetPassword(u) ? (
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs tracking-widest text-slate-400">
+                          ••••••
+                        </span>
+                        <button
+                          onClick={() => setResetTarget(u)}
+                          className="rounded-md border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50"
+                        >
+                          {t("admin.users.reset")}
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-slate-400">{PLACEHOLDER}</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-xs text-slate-600">
                     <span className="block font-mono">{u.ipAddress ?? PLACEHOLDER}</span>
                     <span className="block text-slate-400">
