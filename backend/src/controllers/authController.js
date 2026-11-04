@@ -143,6 +143,15 @@ exports.login = asyncHandler(async (req, res) => {
     });
   }
 
+  // Burned account ကို login မှာပဲ ပိတ်တယ် — token မထုတ်ဘူး။ Password အောင်မြင်ပြီးမှ
+  // ဖြေတယ်: စကားဝှက်မှားနေသူဆီ "ဒီအကောင့် ပိတ်ထားတယ်" ဆိုတဲ့ သတင်း မရောက်အောင်။
+  // (auth middleware ကလည်း ဒီ status ကိုပဲ စစ်တယ် — ဒါက အစောပိုင်း တံခါး။)
+  if (user.status === "burned") {
+    return res.status(403).json({
+      message: "This account has been deactivated. Please contact support.",
+    });
+  }
+
   // Admin user list မှာ IP/device ပြနိုင်အောင် login အောင်မြင်တိုင်း မှတ်ထားမယ်။
   user.ipAddress = req.ip || null;
   user.lastLoginAt = new Date();

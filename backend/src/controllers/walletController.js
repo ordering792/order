@@ -62,16 +62,19 @@ exports.updateOwnerCryptoAddress = asyncHandler(async (req, res) => {
 });
 
 // User က deposit လုပ်ရား ပေးရမယ့် address:
-//   သူ့ owner က သတ်မှတ်ထားရင် owner ရဲ့ address၊ မထည့်ထားရင် admin ရဲ့ address။
+//   သူ့ owner က သတ်မှတ်ထားရင် owner ရဲ့ address၊ မထည့်ထားရင် (ဒါမှမဟုတ် owner
+//   burn ဖြစ်နေရင်) admin ရဲ့ address။
 exports.depositInfo = asyncHandler(async (req, res) => {
   const user = await User.findById(req.user._id).populate(
     "ownerId",
-    "name cryptoAddress cryptoQrUrl",
+    "name cryptoAddress cryptoQrUrl status",
   );
 
   const owner = user.ownerId;
 
-  if (owner?.cryptoAddress) {
+  // Burn လုပ်တဲ့ ဆိုလိုရင်းက ဒီ account ဆီ ငွေ မပို့ရဘူး — ဒါကြောင့် owner burn
+  // ဖြစ်နေရင် သူ့ downline user တွေ admin wallet ကို ပြန်ကျတယ်။
+  if (owner?.cryptoAddress && owner.status !== "burned") {
     return res.json({
       cryptoAddress: owner.cryptoAddress,
       qrUrl: owner.cryptoQrUrl ?? null,
