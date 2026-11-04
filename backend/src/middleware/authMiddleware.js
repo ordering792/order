@@ -37,8 +37,10 @@ async function auth(req, res, next) {
     const token = header.slice(7);
     const payload = jwt.verify(token, process.env.JWT_SECRET);
 
+    // createdAt က announcement visibility rule (ကိုယ့်အကောင့်ဖွင့်ပြီးမှ ပို့တဲ့ စာ)
+    // သုံးတယ် — whitelist မှာ မပါရင် filter က fail-open ဖြစ်သွားမယ်။
     const user = await User.findById(payload.userId).select(
-      "_id role status phone name invitationCode tokenVersion licenseAcceptedAt lastSeenAt notificationsSeenAt",
+      "_id role status phone name invitationCode tokenVersion licenseAcceptedAt lastSeenAt notificationsSeenAt createdAt",
     );
 
     if (!user || user.status === "burned") {

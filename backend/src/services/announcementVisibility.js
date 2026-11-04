@@ -7,7 +7,12 @@ function visibleAnnouncementFilter(user) {
 
   // ကျန် role က broadcast နဲ့ ကိုယ့်ဆီရောက်တဲ့ စာပဲ။ recipientId: null က
   // field လုံးဝ မပါတဲ့ အဟောင်း broadcast row တွေကိုပါ ကိုင်တယ်။
-  return { $or: [{ recipientId: null }, { recipientId: user._id }] };
+  // createdAt bound က account ဖွင့်တဲ့ အချိန် — ဒါမှ ဒီထက်အရင် ပို့ထားတဲ့
+  // broadcast တွေ အသစ်ဝင်သူဆီ မရောက်ဘူး (badge လည်း အတူတကွ မှန်)။
+  return {
+    $or: [{ recipientId: null }, { recipientId: user._id }],
+    createdAt: { $gte: user.createdAt },
+  };
 }
 
 module.exports = { visibleAnnouncementFilter };
