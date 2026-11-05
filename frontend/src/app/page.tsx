@@ -27,27 +27,29 @@ const partners = [
   { name: "Shopee", color: "text-emerald-600" },
 ];
 
+// Ticker အတွက် display-only data — ပုံ (avatar) မသုံးဘူး၊ "User" badge ပဲ ပြတယ်။
+// နံပါတ်/ဈေးနှုန်းတွေကို client ကိုယ်တိုင် ရေးသားပြီး (2026-11-05)။
 const fakeCommissions = [
-  { phone: "+95 945***737", amount: "24,486.00", img: "/images/avatar1.jpg" },
-  { phone: "+95 971***295", amount: "26,409.00", img: "/images/avatar2.jpg" },
-  { phone: "+95 946***730", amount: "6,625.00", img: "/images/avatar3.jpg" },
-  { phone: "+95 959***908", amount: "34,061.00", img: "/images/avatar4.jpg" },
-  { phone: "+95 959***966", amount: "27,942.00", img: "/images/avatar5.jpg" },
-  { phone: "+95 963***540", amount: "7,936.00", img: "/images/avatar1.jpg" },
-  { phone: "+95 909***921", amount: "25,609.00", img: "/images/avatar2.jpg" },
-  { phone: "+95 960***527", amount: "19,088.00", img: "/images/avatar3.jpg" },
-  { phone: "+95 965***686", amount: "10,851.00", img: "/images/avatar4.jpg" },
-  { phone: "+95 934***259", amount: "20,669.00", img: "/images/avatar5.jpg" },
-  { phone: "+95 933***338", amount: "25,026.00", img: "/images/avatar1.jpg" },
-  { phone: "+95 995***303", amount: "38,094.00", img: "/images/avatar2.jpg" },
-  { phone: "+95 978***521", amount: "14,390.00", img: "/images/avatar3.jpg" },
-  { phone: "+95 985***925", amount: "21,454.00", img: "/images/avatar4.jpg" },
-  { phone: "+95 923***198", amount: "15,673.00", img: "/images/avatar5.jpg" },
-  { phone: "+95 920***811", amount: "30,116.00", img: "/images/avatar1.jpg" },
-  { phone: "+95 966***141", amount: "25,751.00", img: "/images/avatar2.jpg" },
-  { phone: "+95 985***512", amount: "35,342.00", img: "/images/avatar3.jpg" },
-  { phone: "+95 950***710", amount: "19,831.00", img: "/images/avatar4.jpg" },
-  { phone: "+95 966***442", amount: "34,797.00", img: "/images/avatar5.jpg" },
+  { phone: "+1 415***737", name: "User", amount: "244.50" },
+  { phone: "+44 207***295", name: "User", amount: "526.00" },
+  { phone: "+65 6123***30", name: "User", amount: "162.50" },
+  { phone: "+81 355***908", name: "User", amount: "340.00" },
+  { phone: "+61 298***966", name: "User", amount: "794.20" },
+  { phone: "+33 142***540", name: "User", amount: "179.30" },
+  { phone: "+49 302***921", name: "User", amount: "256.00" },
+  { phone: "+82 255***527", name: "User", amount: "419.00" },
+  { phone: "+1 212***686", name: "User", amount: "101.50" },
+  { phone: "+61 390***259", name: "User", amount: "289.00" },
+  { phone: "+44 161***338", name: "User", amount: "625.00" },
+  { phone: "+81 662***303", name: "User", amount: "380.50" },
+  { phone: "+65 678***521", name: "User", amount: "143.00" },
+  { phone: "+33 472***925", name: "User", amount: "421.40" },
+  { phone: "+49 892***198", name: "User", amount: "153.20" },
+  { phone: "+1 312***811", name: "User", amount: "301.60" },
+  { phone: "+44 113***141", name: "User", amount: "255.10" },
+  { phone: "+81 453***512", name: "User", amount: "835.40" },
+  { phone: "+65 632***710", name: "User", amount: "198.30" },
+  { phone: "+61 732***442", name: "User", amount: "479.70" },
 ];
 
 export default function DashboardPage() {
@@ -227,70 +229,6 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* --- User Commission Income Dynamics Section --- */}
-      <div className="px-4 py-2">
-        <h2 className="text-base font-bold text-gray-800 mb-3">
-          {t("home.commissionDynamics")}
-        </h2>
-
-        {/* Ticker Box Wrapper */}
-        <div className="h-[252px] overflow-hidden relative">
-          <div className="animate-vertical-scroll flex flex-col gap-3">
-            {/* List ကို ၂ ကြိမ် ပတ်ပြီး Auto Seamless Infinite Loop ပြုလုပ်ရန် */}
-            {[...fakeCommissions, ...fakeCommissions].map((item, i) => (
-              <div
-                key={i}
-                className="h-[72px] bg-white border border-gray-100 rounded-xl p-3 flex items-center justify-between shadow-sm shrink-0"
-              >
-                <div className="flex items-center space-x-3">
-                  <img
-                    src={item.img}
-                    alt={t("home.userAvatar")}
-                    className="w-12 h-12 rounded-lg object-cover bg-gray-100"
-                    onError={(e) => {
-                      e.currentTarget.src =
-                        "https://ui-avatars.com/api/?name=User&background=0D8ABC&color=fff";
-                    }}
-                  />
-                  <div className="flex flex-col">
-                    <span className="text-sm font-semibold text-gray-800">
-                      {item.phone}
-                    </span>
-                    <span className="text-xs text-gray-400">
-                      {t("orders.commission")}
-                    </span>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <span className="text-xs font-semibold text-gray-500 block">
-                    USDT
-                  </span>
-                  <span className="text-sm font-bold text-gray-900">
-                    {item.amount}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Vertical Scroll Animation CSS (Speed မြန်စေရန် 12s သို့ပြောင်းထားပြီး hover လုပ်လည်း မရပ်စေရန် pause ကိုဖြုတ်ထားသည်) */}
-        <style jsx>{`
-          @keyframes vertical-scroll {
-            0% {
-              transform: translateY(0);
-            }
-            100% {
-              transform: translateY(-50%);
-            }
-          }
-          .animate-vertical-scroll {
-            animation: vertical-scroll 12s linear infinite;
-          }
-        `}</style>
-      </div>
-      {/* ----------------------------------------------------------------------- */}
-
       {/* Total Profits Section */}
       {user ? (
         <>
@@ -341,6 +279,64 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+
+      {/* --- User Commission Income Dynamics Section --- */}
+      <div className="px-4 py-2">
+        <h2 className="text-base font-bold text-gray-800 mb-3">
+          {t("home.commissionDynamics")}
+        </h2>
+
+        {/* Ticker Box Wrapper — ၃ ကာ 3 steps (68px + 10px gap) အတိအကျမြင်အောင် 234px */}
+        <div className="h-[234px] overflow-hidden relative">
+          <div className="animate-vertical-scroll flex flex-col gap-2.5">
+            {/* List ကို ၂ ကြိမ် ပတ်ပြီး Auto Seamless Infinite Loop ပြုလုပ်ရန် */}
+            {[...fakeCommissions, ...fakeCommissions].map((item, i) => (
+              <div
+                key={i}
+                className="h-[68px] bg-white border border-gray-100 rounded-xl px-3.5 flex items-center justify-between shadow-sm shrink-0"
+              >
+                <div className="flex items-center space-x-3">
+                  <div className="px-2.5 h-9 rounded-lg bg-gradient-to-tr from-amber-500 to-orange-400 text-white font-bold flex items-center justify-center text-xs tracking-wide shadow-sm shrink-0">
+                    {item.name}
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-bold text-gray-800">
+                      {item.phone}
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      {t("orders.commission")}
+                    </span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-[11px] font-semibold text-gray-400 block">
+                    USDT
+                  </span>
+                  <span className="text-sm font-bold text-gray-900">
+                    {item.amount}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Vertical Scroll Animation CSS (Client က နှေးစေချင်တာမို့ 12s → 25s; hover pause မသုံးဘူး) */}
+        <style jsx>{`
+          @keyframes vertical-scroll {
+            0% {
+              transform: translateY(0);
+            }
+            100% {
+              transform: translateY(-50%);
+            }
+          }
+          .animate-vertical-scroll {
+            animation: vertical-scroll 25s linear infinite;
+          }
+        `}</style>
+      </div>
+      {/* ----------------------------------------------------------------------- */}
 
       {/* Cooperative Partners */}
       <div className="px-4 py-3">

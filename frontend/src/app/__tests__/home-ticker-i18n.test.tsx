@@ -64,13 +64,22 @@ describe("home commission ticker i18n", () => {
     expect(screen.queryByText("Commission")).toBeNull();
   });
 
-  it("labels the avatar image in the active language", () => {
-    renderJaHome();
-
-    expect(screen.getAllByAltText("ユーザーアバター").length).toBeGreaterThan(
-      0,
+  // 2026-11-05 ruling: ticker က avatar ပုံ မသုံးတော့ဘူး — "User" badge ပဲ ပြတယ်။
+  // ဒါကြောင့် alt-text စစ်တာအစား ပုံလုံးဝမပါတာနဲ့ loop အရေအတွက်ကို စစ်တယ်။
+  it("shows the User badge and no avatar picture", () => {
+    const { container } = render(
+      <LanguageProvider>
+        <DashboardPage />
+      </LanguageProvider>,
     );
-    expect(screen.queryAllByAltText("User Avatar")).toHaveLength(0);
+
+    const rows = container.querySelectorAll(".animate-vertical-scroll > div");
+
+    expect(rows).toHaveLength(40);
+    expect(
+      container.querySelectorAll(".animate-vertical-scroll img"),
+    ).toHaveLength(0);
+    expect(rows[0].textContent).toContain("User");
   });
 
   // App အစစ်က USDT (TRC20) သုံးတဲ့အတွက် ticker မှာ USD လို့ မပြရ။
