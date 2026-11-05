@@ -37,7 +37,8 @@ export const walletDict: Dict = {
     "walletBind.confirmSave": "Are you sure you want to save this wallet address? It can only be saved once and cannot be changed later.",
     "walletBind.saveSuccess": "Wallet address saved successfully!",
     "walletBind.saveFailed": "Failed to save the wallet address",
-    "walletBind.pendingWithdrawal": "A withdrawal is pending — resolve it before changing the address.",
+    "walletBind.alreadyBound": "This wallet address is already saved. Only support can change it.",
+    "walletBind.wrongPassword": "Your login password is incorrect. Please try again.",
   },
   es: {
     "withdraw.title": "Retirar fondos",
@@ -75,7 +76,8 @@ export const walletDict: Dict = {
     "walletBind.confirmSave": "¿Seguro que quieres guardar esta dirección de billetera? Solo se puede guardar una vez y no se puede cambiar después.",
     "walletBind.saveSuccess": "¡Dirección de billetera guardada con éxito!",
     "walletBind.saveFailed": "No se pudo guardar la dirección de cartera",
-    "walletBind.pendingWithdrawal": "Hay un retiro pendiente; resuélvelo antes de cambiar la dirección.",
+    "walletBind.alreadyBound": "Esta dirección de billetera ya está guardada. Solo el soporte puede cambiarla.",
+    "walletBind.wrongPassword": "Tu contraseña de inicio de sesión es incorrecta. Inténtalo de nuevo.",
   },
   pt: {
     "withdraw.title": "Sacar fundos",
@@ -113,7 +115,8 @@ export const walletDict: Dict = {
     "walletBind.confirmSave": "Tem certeza de que deseja salvar este endereço de carteira? Só pode ser salvo uma vez e não poderá ser alterado depois.",
     "walletBind.saveSuccess": "Endereço da carteira salvo com sucesso!",
     "walletBind.saveFailed": "Não foi possível salvar o endereço da carteira",
-    "walletBind.pendingWithdrawal": "Há um saque pendente; resolva-o antes de alterar o endereço.",
+    "walletBind.alreadyBound": "Este endereço de carteira já está salvo. Somente o suporte pode alterá-lo.",
+    "walletBind.wrongPassword": "Sua senha de login está incorreta. Tente novamente.",
   },
   ar: {
     "withdraw.title": "سحب الأموال",
@@ -151,7 +154,8 @@ export const walletDict: Dict = {
     "walletBind.confirmSave": "هل أنت متأكد من حفظ عنوان المحفظة này؟ يمكن حفظه مرة واحدة فقط ولا يمكن تغييره لاحقًا.",
     "walletBind.saveSuccess": "تم حفظ عنوان المحفظة بنجاح!",
     "walletBind.saveFailed": "تعذر حفظ عنوان المحفظة",
-    "walletBind.pendingWithdrawal": "هناك سحب قيد الانتظار؛ يجب حلّه قبل تغيير العنوان.",
+    "walletBind.alreadyBound": "عنوان محفظتك محفوظ بالفعل. يمكن للدعم فقط تغييره.",
+    "walletBind.wrongPassword": "كلمة مرور تسجيل الدخول غير صحيحة. حاول مرة أخرى.",
   },
   ja: {
     "withdraw.title": "資金を出金",
@@ -189,7 +193,8 @@ export const walletDict: Dict = {
     "walletBind.confirmSave": "このウォレットアドレスを保存しますか？一度しか保存できず、後から変更できません。",
     "walletBind.saveSuccess": "ウォレットアドレスを保存しました！",
     "walletBind.saveFailed": "ウォレットアドレスを保存できませんでした",
-    "walletBind.pendingWithdrawal": "出金が保留中です。保留を解消してからアドレスを変更してください。",
+    "walletBind.alreadyBound": "このウォレットアドレスはすでに保存されています。変更できるのはサポートのみです。",
+    "walletBind.wrongPassword": "ログインパスワードが正しくありません。もう一度お試しください。",
   },
   th: {
     "withdraw.title": "ถอนเงิน",
@@ -227,7 +232,8 @@ export const walletDict: Dict = {
     "walletBind.confirmSave": "คุณแน่ใจหรือไม่ว่าต้องการบันทึกที่อยู่กระเป๋านี้? บันทึกได้เพียงครั้งเดียวและไม่สามารถเปลี่ยนแปลงได้ในภายหลัง",
     "walletBind.saveSuccess": "บันทึกที่อยู่กระเป๋าสำเร็จแล้ว!",
     "walletBind.saveFailed": "ไม่สามารถบันทึกที่อยู่กระเป๋าเงินได้",
-    "walletBind.pendingWithdrawal": "มีการถอนรออยู่ กรุณาจัดการให้เสร็จก่อนเปลี่ยนที่อยู่",
+    "walletBind.alreadyBound": "ที่อยู่อีกระเป๋านี้ถูกบันทึกแล้ว มีฝ่ายสนับสนุนเท่านั้นที่เปลี่ยนได้",
+    "walletBind.wrongPassword": "รหัสผ่านเข้าสู่ระบบไม่ถูกต้อง กรุณาลองอีกครั้ง",
   },
   ko: {
     "withdraw.title": "자금 출금",
@@ -265,7 +271,8 @@ export const walletDict: Dict = {
     "walletBind.confirmSave": "이 지갑 주소를 저장하시겠습니까? 한 번만 저장할 수 있으며 이후 변경할 수 없습니다.",
     "walletBind.saveSuccess": "지갑 주소가 저장되었습니다!",
     "walletBind.saveFailed": "지갑 주소를 저장할 수 없습니다",
-    "walletBind.pendingWithdrawal": "출금이 보류 중입니다. 보류가 해결된 뒤에 주소를 변경하세요.",
+    "walletBind.alreadyBound": "이 지갑 주소는 이미 저장되었습니다. 고객센터만 변경할 수 있습니다.",
+    "walletBind.wrongPassword": "로그인 비밀번호가 올바르지 않습니다. 다시 시도해 주세요.",
   },
   zh: {
     "withdraw.title": "提现资金",
@@ -303,7 +310,8 @@ export const walletDict: Dict = {
     "walletBind.confirmSave": "确定要保存此钱包地址吗？只能保存一次，之后无法更改。",
     "walletBind.saveSuccess": "钱包地址保存成功！",
     "walletBind.saveFailed": "无法保存钱包地址",
-    "walletBind.pendingWithdrawal": "有提现正在处理中，请先处理完再更换地址。",
+    "walletBind.alreadyBound": "该钱包地址已保存。只有客服可以更改。",
+    "walletBind.wrongPassword": "登录密码不正确。请重试。",
   },
   ur: {
     "withdraw.title": "رقم نکالیں",
@@ -344,7 +352,9 @@ export const walletDict: Dict = {
       "کیا آپ واقعی یہ والیٹ ایڈریس محفوظ کرنا چاہتے ہیں؟ یہ صرف ایک بار محفوظ ہو سکتا ہے اور بعد میں تبدیل نہیں کیا جا سکتا۔",
     "walletBind.saveSuccess": "والیٹ ایڈریس کامیابی سے محفوظ ہو گیا!",
     "walletBind.saveFailed": "والیٹ ایڈریس محفوظ نہیں ہو سکا",
-    "walletBind.pendingWithdrawal":
-      "ایک رقم نکالنے کی درخواست زیر التوا ہے — ایڈریس تبدیل کرنے سے پہلے اسے نمٹا لیں۔",
+    "walletBind.alreadyBound":
+      "یہ والیٹ ایڈریس پہلے ہی محفوظ ہے۔ صرف سپورٹ اسے بدل سکتا ہے۔",
+    "walletBind.wrongPassword":
+      "آپ کا لاگ ان پاس ورڈ غلط ہے۔ دوبارہ کوشش کریں۔",
   },
 };

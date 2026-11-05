@@ -863,19 +863,100 @@ describe("Transaction endpoints", () => {
   describe("Wallet address (user TRC20)", () => {
     const TRON_ADDRESS = "TQSVhFzR7pN3yKdLmXcBv8tGnWqJs4Yp2r";
 
-    it("user updates their own wallet address", async () => {
+    it("binds an address only after the login password checks out", async () => {
       const user = await createUser();
 
       const res = await request(app)
         .put("/api/auth/wallet-address")
         .set("Authorization", `Bearer ${makeToken(user)}`)
-        .send({ walletAddress: `  ${TRON_ADDRESS} ` });
+        .send({
+          walletAddress: `  ${TRON_ADDRESS} `,
+          password: "password123",
+        });
 
       expect(res.status).toBe(200);
       expect(res.body.walletAddress).toBe(TRON_ADDRESS);
 
       const fresh = await User.findById(user._id);
       expect(fresh.walletAddress).toBe(TRON_ADDRESS);
+    });
+
+    it("rejects a bind with no password and saves nothing", async () => {
+      const user = await createUser();
+
+      const res = await request(app)
+        .put("/api/auth/wallet-address")
+        .set("Authorization", `Bearer ${makeToken(user)}`)
+        .send({ walletAddress: TRON_ADDRESS });
+
+      // 401 မဟုတ် — client.ts က 401 မှာ session ကို ရှင်းပြီး user ကို
+      // ထုတ်ချလိုက်မယ်။ JWT authentication အောင်မြင်နေပြီးသား။
+      expect(res.status).toBe(422);
+
+      const untouched = await User.findById(user._id);
+      expect(untouched.walletAddress).toBeNull();
+    });
+
+    it("rejects a wrong login password", async () => {
+      const user = await createUser();
+
+      const res = await request(app)
+        .put("/api/auth/wallet-address")
+        .set("Authorization", `Bearer ${makeToken(user)}`)
+        .send({ walletAddress: TRON_ADDRESS, password: "guessme123" });
+
+      expect(res.status).toBe(422);
+      expect(res.body.message).toBe("Incorrect password");
+
+      const untouched = await User.findById(user._id);
+      expect(untouched.walletAddress).toBeNull();
+    });
+
+    // "တစ်ကြိမ်တည်း" ဆိုတဲ့ page စာသား ကုဒ်ထဲမှာလည်း ဖြစ်အောင် — ဒီလမ်းက
+    // နောက်တစ်ကြိမ် ရေးလို့မရတော့ဘူး (password မှန်ပဲဆိုလည်း)။ ပြောင်းချင်ရင်
+    // admin panel ကနေပဲ (role=user ဆို admin/owner login password မလို)။
+    it("refuses a second bind even with the right password", async () => {
+      const user = await createUser("user", {
+        walletAddress: "TOldBoundAddressPlaceholderXXXXX",
+      });
+
+      const res = await request(app)
+        .put("/api/auth/wallet-address")
+        .set("Authorization", `Bearer ${makeToken(user)}`)
+        .send({ walletAddress: TRON_ADDRESS, password: "password123" });
+
+      expect(res.status).toBe(409);
+      expect(res.body.message).toMatch(/already saved/i);
+
+      const untouched = await User.findById(user._id);
+      expect(untouched.walletAddress).toBe("TOldBoundAddressPlaceholderXXXXX");
+    });
+
+    // အရင် test က pending withdrawal နဲ့ address ပြောင်းတာ ပိတ်ခဲ့တယ် —
+    // ဒါက အဲဒီထက် တင်းတယ်: ချိတ်ပြီးသားဆို withdrawal pending မpending
+    // ဘယ်လိုမစစ်ဘဲ ပိတ်တယ်။
+    it("keeps a bound address frozen while a withdrawal is pending", async () => {
+      const user = await createUser("user", {
+        walletAddress: "TOldAddressPlaceholderXXXX",
+      });
+
+      await Transaction.create({
+        userId: user._id,
+        type: "withdraw",
+        amount: "20.00",
+        status: "pending",
+      });
+
+      const res = await request(app)
+        .put("/api/auth/wallet-address")
+        .set("Authorization", `Bearer ${makeToken(user)}`)
+        .send({ walletAddress: TRON_ADDRESS, password: "password123" });
+
+      expect(res.status).toBe(409);
+      expect(res.body.message).toMatch(/already saved/i);
+
+      const untouched = await User.findById(user._id);
+      expect(untouched.walletAddress).toBe("TOldAddressPlaceholderXXXX");
     });
 
     // Admin panel က ဤ endpoint မှတဆင့် gate ကို လှော်ခတ်လို့ မရအောင် payout
@@ -913,29 +994,6 @@ describe("Transaction endpoints", () => {
 
       const untouched = await User.findById(user._id);
       expect(untouched.walletAddress).toBeNull();
-    });
-
-    it("blocks the change while a withdrawal request is pending", async () => {
-      const user = await createUser("user", {
-        walletAddress: "TOldAddressPlaceholderXXXX",
-      });
-
-      await Transaction.create({
-        userId: user._id,
-        type: "withdraw",
-        amount: "20.00",
-        status: "pending",
-      });
-
-      const res = await request(app)
-        .put("/api/auth/wallet-address")
-        .set("Authorization", `Bearer ${makeToken(user)}`)
-        .send({ walletAddress: TRON_ADDRESS });
-
-      expect(res.status).toBe(409);
-
-      const untouched = await User.findById(user._id);
-      expect(untouched.walletAddress).toBe("TOldAddressPlaceholderXXXX");
     });
 
     it("rejects an invalid wallet address payload", async () => {

@@ -65,10 +65,10 @@ export const api = {
   getLanguages: () =>
     request<{ languages: { name: string; code: string }[] }>("/auth/languages"),
 
-  updateWalletAddress: (walletAddress: string) =>
+  updateWalletAddress: (walletAddress: string, password: string) =>
     request<{ message: string }>("/auth/wallet-address", {
       method: "PUT",
-      body: JSON.stringify({ walletAddress }),
+      body: JSON.stringify({ walletAddress, password }),
     }),
 
   changePassword: (oldPassword: string, newPassword: string) =>

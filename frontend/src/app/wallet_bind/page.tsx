@@ -4,7 +4,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import {
-  ChevronLeft, Wallet, AlertCircle,
+  ChevronLeft, Wallet, AlertCircle, Lock,
   Home, ClipboardList, Headphones, User
 } from "lucide-react";
 import { api, ApiError } from "../../lib/api";
@@ -18,12 +18,17 @@ import Toast from "../components/Toast";
 const TRON_ADDRESS = /^T[1-9A-HJ-NP-Za-km-z]{33}$/;
 
 export default function BindWalletPage() {
-  const { refreshUser } = useAuth();
+  const { user, refreshUser } = useAuth();
   const t = useT();
   const [network, setNetwork] = useState("TRC20");
   const [walletAddress, setWalletAddress] = useState("");
+  const [password, setPassword] = useState("");
   const { toast, showToast } = useToast();
   const [isSaving, setIsSaving] = useState(false);
+
+  // Backend က ဒီလိပ်စာကို user ကိုယ်တိုင် ဒုတိယ ရေးတာ ပိတ်ထားတယ် —
+  // page က "တစ်ကြိမ်တည်း" လို့ ပြောပြီးသား ဖြစ်လို့ ဖောင်မ်ကို ပဲ ပြတယ်။
+  const boundAddress = user?.walletAddress || "";
 
   const handleSaveWallet = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,12 +39,17 @@ export default function BindWalletPage() {
       return;
     }
 
+    if (!password) {
+      showToast(t("withdraw.needPassword"));
+      return;
+    }
+
     const confirmSave = window.confirm(t("walletBind.confirmSave"));
     if (!confirmSave) return;
 
     setIsSaving(true);
     try {
-      await api.updateWalletAddress(address);
+      await api.updateWalletAddress(address, password);
       await refreshUser();
       showToast(t("walletBind.saveSuccess"));
       setTimeout(() => {
@@ -51,8 +61,10 @@ export default function BindWalletPage() {
           ? err.status === 400
             ? t("walletBind.invalidAddress")
             : err.status === 409
-              ? t("walletBind.pendingWithdrawal")
-              : err.message
+              ? t("walletBind.alreadyBound")
+              : err.status === 422
+                ? t("walletBind.wrongPassword")
+                : err.message
           : t("walletBind.saveFailed");
       showToast(message);
     } finally {
@@ -77,6 +89,31 @@ export default function BindWalletPage() {
 
         <div className="flex-1 overflow-y-auto w-full relative custom-scrollbar p-4 space-y-4 bg-gray-50">
 
+          {boundAddress ? (
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-4">
+            <div className="flex items-center space-x-2">
+              <div className="w-1.5 h-4 bg-[#ff6600] rounded-full"></div>
+              <h3 className="font-bold text-gray-800 text-xs">{t("walletBind.section")}</h3>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] font-medium text-gray-500">{t("withdraw.wallet")}</label>
+              <div
+                data-testid="bound-wallet-address"
+                className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-xs text-gray-800 font-medium break-all"
+              >
+                {boundAddress}
+              </div>
+            </div>
+
+            <div className="bg-amber-50/60 border border-amber-200 rounded-xl p-3 space-y-1">
+              <div className="flex items-center space-x-1.5 text-amber-600 font-bold text-[11px]">
+                <AlertCircle size={14} />
+                <span>{t("walletBind.alreadyBound")}</span>
+              </div>
+            </div>
+          </div>
+          ) : (
           <form onSubmit={handleSaveWallet} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-4">
             <div className="flex items-center space-x-2">
               <div className="w-1.5 h-4 bg-[#ff6600] rounded-full"></div>
@@ -148,6 +185,24 @@ export default function BindWalletPage() {
               </div>
             </div>
 
+            <div className="space-y-1">
+              <label className="text-[11px] font-medium text-gray-500">{t("withdraw.loginPassword")}</label>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
+                  <Lock size={16} />
+                </span>
+                <input
+                  type="password"
+                  data-testid="bind-wallet-password"
+                  placeholder={t("withdraw.passwordPlaceholder")}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-9 pr-4 py-3 text-xs text-gray-800 font-medium focus:outline-none focus:border-[#ff6600] transition"
+                />
+              </div>
+            </div>
+
             <button
               type="submit"
               disabled={isSaving}
@@ -156,6 +211,7 @@ export default function BindWalletPage() {
               {isSaving ? t("walletBind.saving") : t("walletBind.save")}
             </button>
           </form>
+          )}
 
         </div>
 

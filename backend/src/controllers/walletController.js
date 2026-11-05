@@ -9,10 +9,8 @@ const {
   isTronAddress,
 } = require("../utils/walletAddress");
 const {
-  hasPendingWithdrawal,
   isPayoutAccount,
   confirmLoginPassword,
-  PENDING_WITHDRAWAL_MESSAGE,
   PAYOUT_ACCOUNT_MESSAGE,
 } = require("../services/walletGuard");
 
@@ -25,7 +23,17 @@ const cryptoAddressSchema = z.object({
 
 const walletAddressSchema = z.object({
   walletAddress: z.string().min(10).max(100),
+  // User က ကိုယ့် withdraw လိပ်စာ ချိတ်တဲ့အခါ login password ထပ်စစ်တယ် —
+  // ဖုန်း လက်ဝယ်ရှိသူက JWT ထဲ ဝင်ရုံနဲ့ ပိုက်ဆံသွားနေကျ လိပ်စာကို လှည့်လို့
+  // မရအောင် (withdraw လမ်းနဲ့ တစ်စည်းတစ်လက်)။
+  password: z.string().max(100).optional(),
 });
+
+// "တစ်ကြိမ်တည်း သိမ်းလို့ရ" ဆိုတာ ဒီ endpoint မှာ စာသားပဲ ဖြစ်နေခဲ့တယ် —
+// အကြိမ်ကြိမ် ခွင့်ပြုခဲ့တယ်။ အခု တကယ်ပိတ်တယ်။ ပြောင်းချင်ရင် admin panel
+// (admin/owner က user row ရဲ့ လိပ်စာ ပြောင်းလို့ရနေဆဲ)။
+const ALREADY_BOUND_MESSAGE =
+  "Your wallet address is already saved and cannot be changed from here";
 
 // Admin / Owner ကိုယ် payout address + QR သတ်မှတ်ခြင်း
 exports.updateOwnerCryptoAddress = asyncHandler(async (req, res) => {
@@ -190,8 +198,26 @@ exports.updateWalletAddress = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: INVALID_WALLET_ADDRESS_MESSAGE });
   }
 
-  if (await hasPendingWithdrawal(req.user._id)) {
-    return res.status(409).json({ message: PENDING_WITHDRAWAL_MESSAGE });
+  // auth middleware ရဲ့ select whitelist မှာ walletAddress မပါလို့ ဒီမှာ ဖတ်တယ်။
+  const alreadyBound = await User.exists({
+    _id: req.user._id,
+    walletAddress: { $nin: [null, ""] },
+  });
+
+  if (alreadyBound) {
+    return res.status(409).json({ message: ALREADY_BOUND_MESSAGE });
+  }
+
+  const confirmed = await confirmLoginPassword(
+    req.user._id,
+    parsed.data.password,
+  );
+
+  if (!confirmed.ok) {
+    // 422 — လိပ်စာမှားတာ (400) နဲ့ password မှားတာကို frontend ခွဲပြနိုင်အောင်။
+    // 401 ကတော့ ဘယ်တော့မှ မသုံးဘူး: client.ts က session ကို ရှင်းပြီး
+    // user ကို ထုတ်ချလိုက်မယ်။
+    return res.status(422).json({ message: confirmed.message });
   }
 
   await User.findByIdAndUpdate(req.user._id, { walletAddress });
