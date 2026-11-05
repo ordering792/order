@@ -261,13 +261,26 @@ describe("Admin users page", () => {
     expect(screen.getByRole("button", { name: "Reset" })).toBeInTheDocument();
   });
 
-  it("gives owners the reset control but keeps the rest admin-only", async () => {
+  it("gives owners every control on their own users but keeps role and note admin-only", async () => {
     await renderPage("owner");
 
     expect(screen.getByText("Password")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reset" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "+" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "−" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Change" })).toBeInTheDocument();
+    // role/status/burn ပြောင်းတာ (PATCH /users/:id) နဲ့ note က admin သာ။
     expect(screen.queryByText("Actions")).toBeNull();
+    expect(screen.queryByText("Note")).toBeNull();
+  });
+
+  it("hides every action from an owner on a row that is not his user", async () => {
+    listUsers([row({ role: "owner", name: "Panel Owner" })]);
+    await renderPage("owner");
+
+    expect(screen.queryByRole("button", { name: "Reset" })).toBeNull();
     expect(screen.queryByRole("button", { name: "+" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "−" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Change" })).toBeNull();
   });
 
@@ -517,11 +530,56 @@ describe("Admin users page", () => {
     expect(screen.queryByRole("button", { name: "Change" })).toBeNull();
   });
 
-  it("hides the wallet change control from owners", async () => {
+  // 2026-11-05: owner က ကိုယ့် downline user ရဲ့ wallet လိပ်စာ ပြောင်းလို့ရ —
+  // target က role=user ဖြစ်လို့ payout password ဒဿမ ဘယ်တော့မှ မပေါ်ဘူး။
+  it("lets an owner change a downline user's address without a password", async () => {
+    const user = userEvent.setup();
     await renderPage("owner");
 
-    expect(await screen.findByText(BASE_ROW.invitationCode)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Change" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Change" }));
+
+    const input = await screen.findByTestId("wallet-address-input");
+    expect(screen.queryByTestId("wallet-password-input")).toBeNull();
+
+    await user.type(input, NEW_ADDRESS);
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(api.adminUpdateUserWalletAddress).toHaveBeenCalledWith(
+        BASE_ROW._id,
+        NEW_ADDRESS,
+        undefined,
+      ),
+    );
+    expect(
+      await screen.findByText("Wallet address updated for Ko Ko"),
+    ).toBeInTheDocument();
+  });
+
+  it("lets an owner credit and debit a downline user", async () => {
+    const user = userEvent.setup();
+    await renderPage("owner");
+
+    await user.click(screen.getByRole("button", { name: "+" }));
+    await user.type(await screen.findByTestId("adjust-amount"), "10.00");
+    expect(await screen.findByText(/→ \$135\.50/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(api.adminAdjustBalance).toHaveBeenCalledWith(BASE_ROW._id, {
+        type: "credit",
+        amount: "10.00",
+        reason: undefined,
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "−" }));
+    await user.type(await screen.findByTestId("adjust-amount"), "200.00");
+
+    expect(
+      await screen.findByText("Deduction is larger than the balance"),
+    ).toBeInTheDocument();
+    expect(api.adminAdjustBalance).toHaveBeenCalledTimes(1);
   });
 
   describe("admin note column", () => {

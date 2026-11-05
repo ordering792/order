@@ -14,17 +14,20 @@ router.get("/order-board", auth, adminOrOwner, controller.orderBoard);
 router.patch("/users/:id", auth, adminOnly, controller.updateUser);
 
 // Password reset ကို admin နဲ့ owner နှစ်ယောက်လုံး လုပ်လို့ရတယ် — owner က သူ့
-// downline user (role=user) တွေကိုပဲ (controller မှာ စစ်)။ Balance ညှိတာ admin သာ။
-// Target က admin ဆို controller မှာ 403။
+// downline user (role=user) တွေကိုပဲ (controller မှာ စစ်)။ Target က admin ဆို 403။
 router.put("/users/:id/password", auth, adminOrOwner, controller.resetUserPassword);
-router.post("/users/:id/balance", auth, adminOnly, controller.adjustUserBalance);
 
-// Withdraw ပို့ address — admin က user/owner နှစ်ခုလုံး ပြောင်းလို့ရတယ်။
+// Balance ညှိတာနဲ့ withdraw လိပ်စာ ပြောင်းတာကလည်း owner ကိုယ့် downline user
+// (role=user) တွေအပေါ်မှာပဲ — scope check တွေက controller ထဲ၊ UI ခလုတ်ပိတ်တာက
+// အစစ်မဟုတ်။ Owner က credit/debit နှစ်ခုလုံး ကုန်တာလုပ်ခွင့်ရှိတယ် (ကြမ်းခင်းမထား)၊
+// ဒါပေမယ့် owner/admin row ဒါမှမဟုတ် သူ့ ownerId မဟုတ်တဲ့ user ဆို 403။
+router.post("/users/:id/balance", auth, adminOrOwner, controller.adjustUserBalance);
+
 // Target က admin ဆို 403, pending withdrawal ရှိရင် 409 (controller မှာ)။
 router.put(
   "/users/:id/wallet-address",
   auth,
-  adminOnly,
+  adminOrOwner,
   controller.updateUserWalletAddress,
 );
 

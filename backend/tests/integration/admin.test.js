@@ -1413,16 +1413,103 @@ describe("Admin & owner endpoints", () => {
       expect(untouched.walletAddress).toBe("TPeerAdminWalletAddress000000000");
     });
 
-    it("owners cannot change downline addresses", async () => {
+    // 2026-11-05: owner က ကိုယ့် downline user ရဲ့ လိပ်စာ ပြောင်းလို့ရပြီ —
+    // target က role=user ဖြစ်လို့ admin လို login password မတောင်းဘူး။
+    it("lets an owner set a downline user's address without a password", async () => {
       const owner = await createUser("owner");
       const target = await createUser("user", { ownerId: owner._id });
 
       const res = await request(app)
         .put(`/api/admin/users/${target._id}/wallet-address`)
         .set("Authorization", `Bearer ${makeToken(owner)}`)
+        .send({ walletAddress: `  ${TRON_ADDRESS} ` });
+
+      expect(res.status).toBe(200);
+      expect(res.body.walletAddress).toBe(TRON_ADDRESS);
+      expect((await User.findById(target._id)).walletAddress).toBe(TRON_ADDRESS);
+    });
+
+    it("refuses an owner touching anyone but his own users", async () => {
+      const owner = await createUser("owner");
+      const other = await createUser("owner");
+      const foreign = await createUser("user", { ownerId: other._id });
+      const orphan = await createUser("user");
+      const peerOwner = await createUser("owner");
+      const admin = await createUser("admin", {
+        walletAddress: "TAdminOwnsThisAddress00000000001",
+      });
+
+      for (const target of [foreign, orphan, peerOwner, owner, admin]) {
+        const res = await request(app)
+          .put(`/api/admin/users/${target._id}/wallet-address`)
+          .set("Authorization", `Bearer ${makeToken(owner)}`)
+          .send({ walletAddress: TRON_ADDRESS });
+
+        expect(res.status).toBe(403);
+      }
+
+      expect((await User.findById(foreign._id)).walletAddress).toBeNull();
+      expect((await User.findById(orphan._id)).walletAddress).toBeNull();
+      expect((await User.findById(admin._id)).walletAddress).toBe(
+        "TAdminOwnsThisAddress00000000001",
+      );
+    });
+
+    // Scope က နယ်နိမိတ်ပဲ — address validation နဲ့ pending withdrawal ကို
+    // owner က လွှတ်မခံဘူး (admin တို့နဲ့ တစ်ပြေးညီ)။
+    it("still rejects a non-TRON address and a pending withdrawal for an owner", async () => {
+      const owner = await createUser("owner");
+      const target = await createUser("user", {
+        ownerId: owner._id,
+        walletAddress: "TOldDownlineAddressXXXXXXXXXXXXXX",
+      });
+
+      const badAddress = await request(app)
+        .put(`/api/admin/users/${target._id}/wallet-address`)
+        .set("Authorization", `Bearer ${makeToken(owner)}`)
+        .send({ walletAddress: "0xABCDEF0123456789abcdef0123456789abcdef" });
+
+      expect(badAddress.status).toBe(400);
+      expect(badAddress.body.message).toMatch(/TRC20/);
+
+      await Transaction.create({
+        userId: target._id,
+        type: "withdraw",
+        amount: "15.00",
+        status: "pending",
+      });
+
+      const blocked = await request(app)
+        .put(`/api/admin/users/${target._id}/wallet-address`)
+        .set("Authorization", `Bearer ${makeToken(owner)}`)
         .send({ walletAddress: TRON_ADDRESS });
 
-      expect(res.status).toBe(403);
+      expect(blocked.status).toBe(409);
+      expect((await User.findById(target._id)).walletAddress).toBe(
+        "TOldDownlineAddressXXXXXXXXXXXXXX",
+      );
+    });
+
+    it("keeps admin reach over every non-admin row", async () => {
+      const admin = await createUser("admin");
+      const owner = await createUser("owner", {
+        walletAddress: "TOldOwnerPayoutAddress111111111111",
+      });
+      const target = await createUser("user");
+
+      const userRes = await request(app)
+        .put(`/api/admin/users/${target._id}/wallet-address`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ walletAddress: TRON_ADDRESS });
+
+      expect(userRes.status).toBe(200);
+
+      const ownerRes = await request(app)
+        .put(`/api/admin/users/${owner._id}/wallet-address`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ walletAddress: TRON_ADDRESS, password: "password123" });
+
+      expect(ownerRes.status).toBe(200);
     });
   });
 
@@ -1506,7 +1593,9 @@ describe("Admin & owner endpoints", () => {
       );
     });
 
-    it("owners cannot adjust balances", async () => {
+    // 2026-11-05: owner က credit/debit နှစ်ခုလုံး ကိုယ့် downline user အပေါ်
+    // လုပ်လို့ရ — admin လိုပဲ ကြမ်းခင်းမထား။ Ledger reference က owner id။
+    it("lets an owner credit a downline user and reference himself in the ledger", async () => {
       const owner = await createUser("owner");
       const target = await createUser("user", {
         ownerId: owner._id,
@@ -1516,9 +1605,110 @@ describe("Admin & owner endpoints", () => {
       const res = await request(app)
         .post(`/api/admin/users/${target._id}/balance`)
         .set("Authorization", `Bearer ${makeToken(owner)}`)
+        .send({ type: "credit", amount: "5.00", reason: "missed deposit" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.balance).toBe("15.00");
+
+      const ledger = await WalletLedger.find({ userId: target._id });
+      expect(ledger).toHaveLength(1);
+      expect(ledger[0].type).toBe("credit");
+      expect(toCents(ledger[0].amount.toString())).toBe(500n);
+      expect(ledger[0].reference).toBe(owner._id.toString());
+      expect(ledger[0].note).toBe("Admin adjustment: missed deposit");
+    });
+
+    it("lets an owner debit a downline user down to zero", async () => {
+      const owner = await createUser("owner");
+      const target = await createUser("user", {
+        ownerId: owner._id,
+        balance: "10.00",
+      });
+
+      const res = await request(app)
+        .post(`/api/admin/users/${target._id}/balance`)
+        .set("Authorization", `Bearer ${makeToken(owner)}`)
+        .send({ type: "debit", amount: "10.00" });
+
+      expect(res.status).toBe(200);
+      expect(
+        toCents((await User.findById(target._id)).balance.toString()),
+      ).toBe(0n);
+    });
+
+    it("refuses an owner adjusting anyone but his own users", async () => {
+      const owner = await createUser("owner", { balance: "10.00" });
+      const other = await createUser("owner");
+      const foreign = await createUser("user", {
+        ownerId: other._id,
+        balance: "10.00",
+      });
+      const orphan = await createUser("user", { balance: "10.00" });
+      const peerOwner = await createUser("owner", { balance: "10.00" });
+      const admin = await createUser("admin", { balance: "10.00" });
+
+      for (const target of [foreign, orphan, peerOwner, owner, admin]) {
+        const res = await request(app)
+          .post(`/api/admin/users/${target._id}/balance`)
+          .set("Authorization", `Bearer ${makeToken(owner)}`)
+          .send({ type: "credit", amount: "5.00" });
+
+        expect(res.status).toBe(403);
+        expect(
+          toCents((await User.findById(target._id)).balance.toString()),
+        ).toBe(1000n);
+        expect(await WalletLedger.countDocuments({ userId: target._id })).toBe(
+          0,
+        );
+      }
+    });
+
+    // ငွေထိတဲ့ transaction မဖွင့်ခင် scope စစ်တာ ဒီ 404 က အထောက်အထား။
+    it("says the user is missing when an owner targets an unknown id", async () => {
+      const owner = await createUser("owner");
+
+      const res = await request(app)
+        .post(
+          `/api/admin/users/${new mongoose.Types.ObjectId()}/balance`,
+        )
+        .set("Authorization", `Bearer ${makeToken(owner)}`)
         .send({ type: "credit", amount: "5.00" });
 
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(404);
+    });
+
+    it("refuses an owner adjusting a burned downline user", async () => {
+      const owner = await createUser("owner");
+      const target = await createUser("user", {
+        ownerId: owner._id,
+        balance: "10.00",
+        status: "burned",
+      });
+
+      const res = await request(app)
+        .post(`/api/admin/users/${target._id}/balance`)
+        .set("Authorization", `Bearer ${makeToken(owner)}`)
+        .send({ type: "credit", amount: "5.00" });
+
+      expect(res.status).toBe(409);
+      expect(
+        toCents((await User.findById(target._id)).balance.toString()),
+      ).toBe(1000n);
+    });
+
+    it("lets an admin adjust an owner's balance", async () => {
+      const admin = await createUser("admin");
+      const owner = await createUser("owner", { balance: "10.00" });
+
+      const res = await request(app)
+        .post(`/api/admin/users/${owner._id}/balance`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ type: "credit", amount: "5.00" });
+
+      expect(res.status).toBe(200);
+      expect(
+        toCents((await User.findById(owner._id)).balance.toString()),
+      ).toBe(1500n);
     });
 
     it("refuses to adjust a burned account", async () => {

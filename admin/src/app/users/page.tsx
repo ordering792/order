@@ -209,9 +209,11 @@ export default function AdminUsersPage() {
         ? t("admin.role.owner")
         : t("admin.role.user");
 
-  // Owner က ကိုယ့် downline user (role=user) ကိုသာ reset လုပ်နိုင်တယ် — backend ရဲ့
-  // rule အတိုင်း။ Admin က admin row ကလွဲရင် အားလုံး ရတယ်။
-  const canResetPassword = (target: ApiAdminUser) =>
+  // Owner က ကိုယ့် downline user (role=user) ကိုသာ ထိနိုင်တယ် — password reset,
+  // balance adjust, wallet address သုံးခုလုံး backend မှာ ဒီ rule တစ်ခုတည်း
+  // (isOutsideOwnerScope)။ Admin က admin row ကလွဲရင် အားလုံး ရတယ်။ ဒီ gate က
+  // အဆင်ပြေစေတာပဲ — နယ်နိမိတ်အစစ်က backend။
+  const canActOn = (target: ApiAdminUser) =>
     isAdmin ? target.role !== "admin" : target.role === "user";
 
   // Online/Offline က backend က lastSeenAt ကနေ တွက်ပေးတဲ့ `online` ဖြစ်တယ်။
@@ -360,7 +362,7 @@ export default function AdminUsersPage() {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1.5">
                       <span className="text-slate-700">${money(u.balance)}</span>
-                      {isAdmin && u.role !== "admin" && (
+                      {canActOn(u) && (
                         <div className="flex gap-1">
                           <button
                             onClick={() => setAdjustTarget({ user: u, type: "credit" })}
@@ -388,7 +390,7 @@ export default function AdminUsersPage() {
                       >
                         {shorten(u.walletAddress)}
                       </span>
-                      {isAdmin && u.role !== "admin" && (
+                      {canActOn(u) && (
                         <button
                           onClick={() => setWalletTarget(u)}
                           className="shrink-0 rounded-md border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50"
@@ -399,7 +401,7 @@ export default function AdminUsersPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    {canResetPassword(u) ? (
+                    {canActOn(u) ? (
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-xs tracking-widest text-slate-400">
                           ••••••

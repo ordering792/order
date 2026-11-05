@@ -18,7 +18,10 @@ const {
 } = require("../utils/walletAddress");
 const { WALLET_NOTES } = require("../constants/walletNotes");
 const { emitToAdmins, emitToUser } = require("../socket");
-const { ownerUserIds } = require("../services/ownershipService");
+const {
+  ownerUserIds,
+  isOutsideOwnerScope,
+} = require("../services/ownershipService");
 const { serializePlan } = require("../services/orderPlanService");
 const {
   hasPendingWithdrawal,
@@ -404,6 +407,15 @@ exports.updateUserWalletAddress = asyncHandler(async (req, res) => {
     });
   }
 
+  // Owner က ကိုယ့် downline user ရဲ့ လိပ်စာကိုသာ ပြောင်းလို့ရတယ်။ Target က
+  // role=user ဖြစ်သည့်အတွက် အောက်က payout password ဒဿမ မလုပ်တော့ဘူး — owner
+  // ကိုယ်တိုင် login password မတောင်းသေးဘူး (2026-11-05 ruling)။
+  if (isOutsideOwnerScope(req.user, user)) {
+    return res.status(403).json({
+      message: "Owners can only change the wallet address of their own users",
+    });
+  }
+
   // Owner ရဲ့ address ကို ပြောင်းတဲ့အခါ နှိပ်နေတဲ့ admin သူ့ login password ကို
   // စစ်တယ် — JWT တစ်ခုခုနဲ့ panel ထဲ ဝင်လိုက်သူက owner ဆီသွားငွေ လိပ်စာကို
   // အလွယ်တကူ လှည့်လို့မရအောင်။ role=user ဆို ဒီအခွင့် မလို (support လုပ်ငန်း)။
@@ -481,13 +493,10 @@ exports.resetUserPassword = asyncHandler(async (req, res) => {
     });
   }
 
-  // Owner က ကိုယ့် downline user (role=user) ကိုသာ reset လုပ်နိုင်တယ် — listUsers ရဲ့
-  // scope နဲ့ တစ်ပြေးညီ။ ကိုယ်တိုင် (role=owner) အပါအဝင် owner/admin row နဲ့ ownerId
-  // မပါသော user ကို မရဘူး။
-  if (
-    req.user.role === "owner" &&
-    (user.role !== "user" || !user.ownerId || !user.ownerId.equals(req.user._id))
-  ) {
+  // Owner က ကိုယ့် downline user (role=user) ကိုသာ reset လုပ်နိုင်တယ် — listUsers
+  // ရဲ့ scope နဲ့ တစ်ပြေးညီ။ ကိုယ်တိုင် (role=owner) အပါအဝင် owner/admin row နဲ့
+  // ownerId မပါသော user ကို မရဘူး။
+  if (isOutsideOwnerScope(req.user, user)) {
     return res.status(403).json({
       message: "Owners can only reset the passwords of their own users",
     });
@@ -528,6 +537,24 @@ exports.adjustUserBalance = asyncHandler(async (req, res) => {
 
   if (deltaCents === 0n) {
     return res.status(400).json({ message: "Amount must be greater than zero" });
+  }
+
+  // Owner က ကိုယ့် downline user (role=user) balance ကိုသာ ညှိလို့ရတယ် — admin
+  // လိုပဲ credit/debit ကုန်တာလုပ်ခွင့်ရှိ၊ ကြမ်းခင်းမထား (2026-11-05 ruling)။
+  // Transaction မစခင် ပိတ်တယ်: ငွေထိတဲ့ session ကို authorization ရှိမှ
+  // ဖွင့်ချင်လို့။ Burned target ကိုတော့ အောက်က transaction လိုပဲ 409။
+  if (req.user.role === "owner") {
+    const target = await User.findById(id).select("role ownerId");
+
+    if (!target) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (isOutsideOwnerScope(req.user, target)) {
+      return res.status(403).json({
+        message: "Owners can only adjust the balance of their own users",
+      });
+    }
   }
 
   const session = await mongoose.startSession();
