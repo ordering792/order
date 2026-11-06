@@ -89,8 +89,10 @@ describe("Support endpoints", () => {
         .query({ guestId: GUEST_ID });
 
       expect(get.status).toBe(200);
-      expect(get.body.messages).toHaveLength(1);
+      // ပထမဆုံး စာပို့တဲ့အခါ greeting auto reply လိုက်ပါတယ်။
+      expect(get.body.messages).toHaveLength(2);
       expect(get.body.messages[0].body).toBe("Hello support");
+      expect(get.body.messages[1].autoKind).toBe("greeting");
       expect(get.body.conversation.lastMessagePreview).toBe("Hello support");
       expect(get.body.conversation.unreadByAdmin).toBe(true);
     });

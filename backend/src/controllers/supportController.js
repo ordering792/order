@@ -6,6 +6,7 @@ const User = require("../models/User");
 const asyncHandler = require("../utils/asyncHandler");
 const { escapeRegExp } = require("../utils/regex");
 const { emitToConversation, emitToAdmins } = require("../socket");
+const { planAutoReplies } = require("../services/supportAutoReply");
 
 const startConversationSchema = z.object({
   subject: z.string().min(1).max(200).optional(),
@@ -150,7 +151,9 @@ exports.getConversation = asyncHandler(async (req, res) => {
   }
 
   const messages = await Message.find({ conversationId: conversation._id })
-    .sort({ createdAt: 1 })
+    // createdAt မိနစ်အတွင်း same ms တူရင် _id (ObjectId timestamp) နဲ့
+    // ဆက်စစ်ပြီး — auto reply က user စာအောက်မှာ ဆက်နေအောင်။
+    .sort({ createdAt: 1, _id: 1 })
     .limit(200)
     .lean();
 
@@ -212,7 +215,46 @@ exports.sendMessage = asyncHandler(async (req, res) => {
     unreadByAdmin: conversation.unreadByAdmin,
   });
 
-  res.status(201).json({ message });
+  // Auto reply က customer message event အပြီးမှာပဲ ထုတ်တယ် — frontend က
+  // ပထမဆုံး message:new ကို optimistic temp bubble နဲ့ အစားထိုးနေလို့၊
+  // greeting ကို အရင်ထုတ်ရင် user ရဲ့ စာပျောက်မယ်။
+  const planned = await planAutoReplies({
+    conversation,
+    body: parsed.data.body,
+    userId: req.customer.userId || null,
+    guestId: req.customer.guestId || null,
+  });
+
+  const autoReplies = [];
+
+  for (const reply of planned) {
+    const autoMessage = await Message.create({
+      conversationId: conversation._id,
+      senderType: "admin",
+      // Greeting ရဲ့ သက်တမ်း-flag lookup က ဒီ identity field ၂ ခုကိုပဲ အားထားတယ်။
+      userId: req.customer.userId || null,
+      guestId: req.customer.guestId || null,
+      body: reply.body,
+      autoKind: reply.autoKind,
+      autoKey: reply.autoKey,
+    });
+
+    // updateLastMessage ကို မခေါ်ဘူး — human CS မဖတ်ရသေးတဲ့ မေးခွန်းကို
+    // "ဖတ်ပြီး" မမှတ်စေချင်၊ admin list preview မှာလည်း မေးခွန်းပဲ ဆက်ပေါ်ချင်။
+    autoReplies.push(autoMessage);
+
+    emitToConversation(conversation._id, "message:new", {
+      conversationId: String(conversation._id),
+      message: {
+        _id: autoMessage._id,
+        senderType: autoMessage.senderType,
+        body: autoMessage.body,
+        createdAt: autoMessage.createdAt,
+      },
+    });
+  }
+
+  res.status(201).json({ message, autoReplies });
 });
 
 exports.closeConversation = asyncHandler(async (req, res) => {
@@ -361,7 +403,9 @@ exports.adminGetConversation = asyncHandler(async (req, res) => {
   }
 
   const messages = await Message.find({ conversationId: conversation._id })
-    .sort({ createdAt: 1 })
+    // createdAt မိနစ်အတွင်း same ms တူရင် _id (ObjectId timestamp) နဲ့
+    // ဆက်စစ်ပြီး — auto reply က user စာအောက်မှာ ဆက်နေအောင်။
+    .sort({ createdAt: 1, _id: 1 })
     .limit(200)
     .lean();
 

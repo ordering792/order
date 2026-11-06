@@ -199,10 +199,13 @@ export const api = {
     ),
 
   sendSupportMessage: (id: string, input: { body: string }) =>
-    request<{ message: unknown }>(`/support/conversations/${id}/messages`, {
-      method: "POST",
-      body: JSON.stringify({ ...input, ...guestBody() }),
-    }),
+    request<{ message: unknown; autoReplies: unknown[] }>(
+      `/support/conversations/${id}/messages`,
+      {
+        method: "POST",
+        body: JSON.stringify({ ...input, ...guestBody() }),
+      },
+    ),
 
   closeConversation: (id: string) =>
     request<{ conversation: unknown }>(

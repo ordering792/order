@@ -124,6 +124,36 @@ export default function CustomerServiceChat({
     };
   }, [conversationId, isOpen]);
 
+  // Auto reply ကို socket message:new နဲ့ တစ်ခါ, REST response ထဲပါ နောက်တစ်ခါ
+  // ပြန်ပေးတယ် — socket မရောက်တဲ့ instance မှာ user က greeting မမြင်ရအောင်။
+  const appendAutoReplies = (items: unknown[]) => {
+    const incoming = (items ?? []).filter(
+      (item): item is ChatMessage =>
+        Boolean(item) && typeof (item as ChatMessage).body === "string",
+    );
+
+    if (incoming.length === 0) return;
+
+    setMessages((prev) => {
+      const known = new Set(prev.map((msg) => msg._id));
+      const next = [...prev];
+
+      for (const msg of incoming) {
+        const id = String(msg._id);
+        if (known.has(id)) continue;
+        known.add(id);
+        next.push({
+          _id: id,
+          senderType: msg.senderType,
+          body: msg.body,
+          createdAt: msg.createdAt,
+        });
+      }
+
+      return next;
+    });
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -150,7 +180,8 @@ export default function CustomerServiceChat({
     setSending(true);
 
     try {
-      await api.sendSupportMessage(conversationId, { body });
+      const res = await api.sendSupportMessage(conversationId, { body });
+      appendAutoReplies(res.autoReplies);
     } catch (err) {
       setMessages((prev) => prev.filter((m) => m._id !== tempId));
       const message =

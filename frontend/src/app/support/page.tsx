@@ -125,6 +125,37 @@ export default function SupportPage() {
     };
   }, [conversationId]);
 
+  // Auto reply ကို socket message:new နဲ့ တစ်ခါ, REST response ထဲပါ နောက်တစ်ခါ
+  // ပြန်ပေးတယ် — prod မှာ socket fan-out အားလုံး မရောက်တာ တိုင်းတာပြီးသားမို့
+  // response ဘက်က အာမခံတယ်။ _id နဲ့ duplicate စစ်ပြီး temp bubble အောက်မှာ ဆက်ထည့်တယ်။
+  const appendAutoReplies = (items: unknown[]) => {
+    const incoming = (items ?? []).filter(
+      (item): item is ChatMessage =>
+        Boolean(item) && typeof (item as ChatMessage).body === "string",
+    );
+
+    if (incoming.length === 0) return;
+
+    setMessages((prev) => {
+      const known = new Set(prev.map((msg) => msg._id));
+      const next = [...prev];
+
+      for (const msg of incoming) {
+        const id = String(msg._id);
+        if (known.has(id)) continue;
+        known.add(id);
+        next.push({
+          _id: id,
+          senderType: msg.senderType,
+          body: msg.body,
+          createdAt: msg.createdAt,
+        });
+      }
+
+      return next;
+    });
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -150,7 +181,8 @@ export default function SupportPage() {
     setInputText("");
 
     try {
-      await api.sendSupportMessage(conversationId, { body });
+      const res = await api.sendSupportMessage(conversationId, { body });
+      appendAutoReplies(res.autoReplies);
     } catch (err) {
       setMessages((prev) => prev.filter((m) => m._id !== tempId));
       const message = err instanceof ApiError ? err.message : t("support.sendFailed");
