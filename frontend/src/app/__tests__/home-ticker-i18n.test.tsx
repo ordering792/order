@@ -66,6 +66,8 @@ describe("home commission ticker i18n", () => {
 
   // 2026-11-05 ruling: ticker က avatar ပုံ မသုံးတော့ဘူး — "User" badge ပဲ ပြတယ်။
   // ဒါကြောင့် alt-text စစ်တာအစား ပုံလုံးဝမပါတာနဲ့ loop အရေအတွက်ကို စစ်တယ်။
+  // အရေအတွက်က data အရောင်းအဝယ် အရေအတွက်ပေါ် မူတည်လို့ အကြမ်းဖျဉ်းကိန်း
+  // မရေးဘူး — list ၂ ဆထပ်ခြင်း (seamless loop) ကိုပဲ စစ်တယ်။
   it("shows the User badge and no avatar picture", () => {
     const { container } = render(
       <LanguageProvider>
@@ -73,9 +75,16 @@ describe("home commission ticker i18n", () => {
       </LanguageProvider>,
     );
 
-    const rows = container.querySelectorAll(".animate-vertical-scroll > div");
+    const rows = Array.from(
+      container.querySelectorAll(".animate-vertical-scroll > div"),
+    );
+    const half = Math.floor(rows.length / 2);
+    const first = rows.slice(0, half).map((row) => row.textContent);
+    const second = rows.slice(half).map((row) => row.textContent);
 
-    expect(rows).toHaveLength(40);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.length % 2).toBe(0);
+    expect(second).toEqual(first);
     expect(
       container.querySelectorAll(".animate-vertical-scroll img"),
     ).toHaveLength(0);
