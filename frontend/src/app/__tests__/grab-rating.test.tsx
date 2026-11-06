@@ -57,22 +57,37 @@ function starButtons() {
 }
 
 async function openOrderCard() {
-  render(
-    <LanguageProvider>
-      <GrabPage />
-    </LanguageProvider>,
-  );
+  await act(async () => {
+    render(
+      <LanguageProvider>
+        <GrabPage />
+      </LanguageProvider>,
+    );
+  });
 
-  fireEvent.click(await screen.findByRole("button", { name: /begin matching/i }));
+  fireEvent.click(screen.getByRole("button", { name: /begin matching/i }));
   return screen.findByText("Rate this product");
 }
 
 beforeEach(() => {
   mockPush.mockClear();
   mockGrabSummary.mockReset();
-  // Card test တွေက summary ကို မဖတ်ဘူး။ resolve မလုပ်ထားမှ mount effect က
-  // setSummary ကို act အပြင်မှာ မခေါ်လို့ jest သတိမထွက်ဘူး။
-  mockGrabSummary.mockReturnValue(new Promise(() => {}));
+  // Card test တွေ အခါစ (၃) စက္ကန့် မခံရအောင် activeOrder ပါတဲ့ summary ပေးတယ် —
+  // instant-reopen branch ကို ဖြတ်သွားတယ်။
+  mockGrabSummary.mockResolvedValue({
+    summary: {
+      balance: "100.00",
+      totalCommission: "0.00",
+      freezeBalance: "0.00",
+      totalOrderNumber: 10,
+      vipLevel: "FREE VIP",
+      commissionRate: "0.50%",
+      completedCount: 0,
+      remainingCount: 10,
+      undoneCount: 1,
+      activeOrder: ORDER,
+    },
+  });
   mockMatchOrder.mockReset();
   mockMatchOrder.mockResolvedValue({
     order: ORDER,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -50,6 +50,19 @@ const EMPTY_SUMMARY: GrabSummary = {
   activeOrder: null,
 };
 
+// Client ruling (2026-11-06): "Begin Matching" က ၃ စက္ကန့် ကြာတဲ့ ခံစားမှုပေးမယ်။
+// Backend က order ကို ~25ms ထဲ ပြန်ပေးပြီးသား — ဒါက ဖန်သားပြင်အတွက် စောင့်တာပဲ၊
+// စည်းမျဉ်း အစစ်မဟုတ် (spam နှိပ်တာကို ပိတ်ချင်ရင် backend cooldown လိုတယ်)။
+// Reveal က max(MATCH_MIN_MS, response ရောက်ချိန်) — network နှေးရင် ထပ်မတိုး။
+const MATCH_MIN_MS = 3000;
+// Stage စာကြောင်း ၃ ခု — MATCH_STAGE_AT_MS ရောက်တဲ့အခါ တစ်ဆင့်တက်တယ်။
+const MATCH_STAGE_KEYS = [
+  "grab.matchingStatus",
+  "grab.matchStageBuyer",
+  "grab.matchStageSecured",
+];
+const MATCH_STAGE_AT_MS = [1000, 2200];
+
 export default function GrabPage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -63,6 +76,23 @@ export default function GrabPage() {
   const [shortBy, setShortBy] = useState("0.00");
   const [rating, setRating] = useState(0);
   const [error, setError] = useState("");
+  const [matchStage, setMatchStage] = useState(0);
+  const matchTimersRef = useRef<number[]>([]);
+
+  // Hold ကြား modal ပိတ် (ဒါမှမဟုတ် page နeက်) ရင် timer ဖျက်တယ် — resolve မဖြစ်
+  // တော့တဲ့ promise က continuation ကို ချန်ထားပြီး state မရေးတော့ဘူး။
+  const clearMatchTimers = useCallback(() => {
+    matchTimersRef.current.forEach((id) => window.clearTimeout(id));
+    matchTimersRef.current = [];
+  }, []);
+
+  useEffect(() => clearMatchTimers, [clearMatchTimers]);
+
+  const waitBeforeReveal = (ms: number) =>
+    new Promise<void>((resolve) => {
+      const id = window.setTimeout(resolve, Math.max(0, ms));
+      matchTimersRef.current.push(id);
+    });
 
   const loadSummary = useCallback(() => {
     api
@@ -113,9 +143,28 @@ export default function GrabPage() {
     setIsLoading(true);
     setActiveProduct(null);
     setRating(0);
+    setMatchStage(0);
+
+    // Client ruling: ကိုယ့်တစ်ခါသား order ကို ပြန်ဖွင့်တာဆိုရင် မစောင့်ဘူး —
+    // backend လည်း အဒါပဲ ပြန်ပေးတယ် (idempotent match)။
+    const instantReopen = Boolean(summary.activeOrder);
+    const startedAt = Date.now();
+
+    if (!instantReopen) {
+      MATCH_STAGE_AT_MS.forEach((offset, index) => {
+        const id = window.setTimeout(() => setMatchStage(index + 1), offset);
+        matchTimersRef.current.push(id);
+      });
+    }
 
     try {
       const res = await api.matchOrder();
+
+      if (!instantReopen) {
+        // Network နှေးရင် ၃ စက္ကန့် ထပ်မတိုးဘူး — ကျန်တဲ့အချိန်လောက်ပဲ ခံတယ်။
+        await waitBeforeReveal(MATCH_MIN_MS - (Date.now() - startedAt));
+      }
+
       setActiveProduct(res.order);
       setNeedsDeposit(res.needsDeposit);
       setShortBy(res.shortBy);
@@ -126,10 +175,12 @@ export default function GrabPage() {
       setIsModalOpen(false);
     } finally {
       setIsLoading(false);
+      setMatchStage(0);
     }
   };
 
   const closeModal = () => {
+    clearMatchTimers();
     setIsModalOpen(false);
     setActiveProduct(null);
   };
@@ -309,7 +360,7 @@ export default function GrabPage() {
               </div>
               <div>
                 <h3 className="font-bold text-gray-800 text-base">{t("grab.matching")}</h3>
-                <p className="text-xs text-gray-400 mt-1">{t("grab.matchingStatus")}</p>
+                <p className="text-xs text-gray-400 mt-1">{t(MATCH_STAGE_KEYS[matchStage])}</p>
               </div>
             </div>
           )}
