@@ -13,6 +13,9 @@ const loginLimit = rateLimit({
 
 router.post("/register", authController.register);
 router.post("/login", loginLimit, authController.login);
+// Admin panel login — role=admin/owner သားပဲ။ Customer app က ဒီကို မခေါ်ဘူး၊
+// panel ကလည်း /login ကို မခေါ်ဘူး (app အသီးသီးရဲ့ api/index.ts မှာ သတ်မှတ်)။
+router.post("/staff-login", loginLimit, authController.staffLogin);
 router.get("/me", auth, authController.me);
 router.post("/license-accept", auth, authController.acceptLicense);
 router.put("/language", auth, authController.updateLanguage);

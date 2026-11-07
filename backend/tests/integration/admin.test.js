@@ -71,8 +71,10 @@ describe("Admin & owner endpoints", () => {
     it("logs in when the phone has stray spaces or dashes", async () => {
       const admin = await createUser("admin", { phone: "09112223334" });
 
+      // Staff account — /auth/login က role=user သားပဲ, ဒီ surface ကို
+      // staff-login လို့ပဲ ခေါ်ရမယ် (gateway test တွေက login-surface.test.js)။
       const res = await request(app)
-        .post("/api/auth/login")
+        .post("/api/auth/staff-login")
         .send({ phone: " 0911-222-3334 ", password: "password123" });
 
       expect(res.status).toBe(200);
@@ -84,7 +86,7 @@ describe("Admin & owner endpoints", () => {
       await createUser("admin", { phone: "09112223335" });
 
       const res = await request(app)
-        .post("/api/auth/login")
+        .post("/api/auth/staff-login")
         .send({ phone: "09112223335", password: " password123 " });
 
       expect(res.status).toBe(200);

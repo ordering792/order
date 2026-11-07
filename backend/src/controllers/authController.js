@@ -114,52 +114,86 @@ exports.register = asyncHandler(async (req, res) => {
   });
 });
 
-exports.login = asyncHandler(async (req, res) => {
-  const parsed = loginSchema.safeParse(req.body);
+// Login surface — customer app နဲ့ admin panel က /auth/login တစ်ခုတည်းကို မျှသုံးနေလို့
+// ဘယ် app ကနေ ဝင်တာလဲ backend က သိခွင့်မရှိ။ ဒါကြောင့် surface အလိုက် route ခွဲထားတယ်:
+// /auth/login = customer (role=user သား), /auth/staff-login = panel (admin|owner သား)။
+// Gate ကို password အောင်မြင်ပြီးမှ စစ်တယ် — password မှားနေသူဆီ "ဒီဖုန်းနံပါတ်က
+// staff account" ဆိုတဲ့ အချက် မရောက်အောင်။
+const LOGIN_SURFACES = {
+  customer: {
+    roles: ["user"],
+    refusal: "This account signs in from the admin panel.",
+  },
+  staff: {
+    roles: ["admin", "owner"],
+    refusal: "This account signs in from the customer app.",
+  },
+};
 
-  if (!parsed.success) {
-    return res.status(400).json({
-      message: "Validation failed",
-      errors: parsed.error.issues,
-    });
-  }
+function performLogin(surface) {
+  return asyncHandler(async (req, res) => {
+    const parsed = loginSchema.safeParse(req.body);
 
-  const phone = normalizePhone(parsed.data.phone);
-  const password = normalizePassword(parsed.data.password);
+    if (!parsed.success) {
+      return res.status(400).json({
+        message: "Validation failed",
+        errors: parsed.error.issues,
+      });
+    }
 
-  const user = await User.findOne({ phone }).select("+passwordHash");
+    const phone = normalizePhone(parsed.data.phone);
+    const password = normalizePassword(parsed.data.password);
 
-  if (!user) {
-    return res.status(401).json({
-      message: "Invalid phone or password",
-    });
-  }
+    const user = await User.findOne({ phone }).select("+passwordHash");
 
-  const valid = await bcrypt.compare(password, user.passwordHash);
+    if (!user) {
+      return res.status(401).json({
+        message: "Invalid phone or password",
+      });
+    }
 
-  if (!valid) {
-    return res.status(401).json({
-      message: "Invalid phone or password",
-    });
-  }
+    const valid = await bcrypt.compare(password, user.passwordHash);
 
-  // Burned account ကို login မှာပဲ ပိတ်တယ် — token မထုတ်ဘူး။ Password အောင်မြင်ပြီးမှ
-  // ဖြေတယ်: စကားဝှက်မှားနေသူဆီ "ဒီအကောင့် ပိတ်ထားတယ်" ဆိုတဲ့ သတင်း မရောက်အောင်။
-  // (auth middleware ကလည်း ဒီ status ကိုပဲ စစ်တယ် — ဒါက အစောပိုင်း တံခါး။)
-  if (user.status === "burned") {
-    return res.status(403).json({
-      message: "This account has been deactivated. Please contact support.",
-    });
-  }
+    if (!valid) {
+      return res.status(401).json({
+        message: "Invalid phone or password",
+      });
+    }
 
-  // Admin user list မှာ IP/device ပြနိုင်အောင် login အောင်မြင်တိုင်း မှတ်ထားမယ်။
-  user.ipAddress = req.ip || null;
-  user.lastLoginAt = new Date();
-  user.lastUserAgent = (req.headers["user-agent"] || "").slice(0, 300) || null;
-  await user.save();
+    // Burned account ကို login မှာပဲ ပိတ်တယ် — token မထုတ်ဘူး။ Password အောင်မြင်ပြီးမှ
+    // ဖြေတယ်: စကားဝှက်မှားနေသူဆီ "ဒီအကောင့် ပိတ်ထားတယ်" ဆိုတဲ့ သတင်း မရောက်အောင်။
+    // (auth middleware ကလည်း ဒီ status ကိုပဲ စစ်တယ် — ဒါက အစောပိုင်း တံခါး။)
+    // Burn က surface ထက် အရင် — ပိတ်ထားတဲ့ account ရဲ့ ကြောင်းကြည့်သူကို အကြောင်း
+    // အရင်း "app မှားတယ်" လို့ မလွှဲပြောင်းပြဘူး။
+    if (user.status === "burned") {
+      return res.status(403).json({
+        message: "This account has been deactivated. Please contact support.",
+      });
+    }
 
-  res.json({ token: signToken(user), user: publicUser(user) });
-});
+    // 409 = အကောင့်ရှိပြီး password လည်းမှန်, ဒါပေမဲ့ ဒီ app အတွက် မဟုတ်။ 403 (burn) နဲ့
+    // status ခွဲထားတယ် — client က ဘယ်စာသားပြရမလဲ ရွေးနိုင်အောင်။ 401 ကို မသုံးဘူး:
+    // client.ts က session ကို ရှင်းလိုက်မယ်။
+    if (!LOGIN_SURFACES[surface].roles.includes(user.role)) {
+      return res.status(409).json({
+        message: LOGIN_SURFACES[surface].refusal,
+      });
+    }
+
+    // Admin user list မှာ IP/device ပြနိုင်အောင် login အောင်မြင်တိုင်း မှတ်ထားမယ်။
+    // App မှားဝင်တဲ့ကြိမ်ကို lastLoginAt မမှတ်ဘူး — panel မှာ "ဒီ staff က customer app
+    // ကနေ ဝင်ဖို့ကြိုးစားတယ်" လို့ မှားဖတ်ရမှာစိုးလို့။
+    user.ipAddress = req.ip || null;
+    user.lastLoginAt = new Date();
+    user.lastUserAgent = (req.headers["user-agent"] || "").slice(0, 300) || null;
+    await user.save();
+
+    res.json({ token: signToken(user), user: publicUser(user) });
+  });
+}
+
+exports.login = performLogin("customer");
+exports.staffLogin = performLogin("staff");
 
 exports.me = asyncHandler(async (req, res) => {
   const fullUser = await User.findById(req.user._id).select(

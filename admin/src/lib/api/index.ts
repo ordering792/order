@@ -48,8 +48,10 @@ export const api = {
       body: JSON.stringify(input),
     }),
 
+  // Panel login — backend က ဒီ endpoint မှာ role=admin/owner သားပဲ token ထုတ်တယ်
+  // (customer app က /auth/login ကို သုံးပြီး role=user သားပဲ ရ)။
   login: (input: { phone: string; password: string }) =>
-    request<{ token: string; user: ApiUser }>("/auth/login", {
+    request<{ token: string; user: ApiUser }>("/auth/staff-login", {
       method: "POST",
       body: JSON.stringify(input),
     }),

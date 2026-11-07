@@ -44,7 +44,15 @@ export default function AdminLoginPage() {
       await refreshUser();
       router.replace("/");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t("admin.login.failed"));
+      // 409 = /auth/staff-login က role=admin/owner သားပဲ token ထုတ်တာ — customer
+      // အကောင့်က ဒီ panel ကို ဝင်ချင်ရင် ဒီ branch ကိုရောက်တယ်။ 401 (password မှား) နဲ့
+      // status နဲ့ပဲ ခွဲပြီး locale စာသား ရွေးတယ်။
+      let message = t("admin.login.failed");
+      if (err instanceof ApiError) {
+        message =
+          err.status === 409 ? t("admin.login.denied") : err.message;
+      }
+      setError(message);
     } finally {
       setIsLoading(false);
     }

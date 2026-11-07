@@ -39,8 +39,16 @@ export default function LoginPage() {
       const account = await login(phone.trim(), password.trim());
       router.push(account.licenseAcceptedAt ? "/" : "/license");
     } catch (err) {
-      const message =
-        err instanceof ApiError ? err.message : t("auth.login.failed");
+      // 409 = account ရှိတယ် password လည်းမှန်, ဒါပေမဲ့ ဒီ endpoint က role=user သားပဲ။
+      // Backend စာသားကို မပြဘူး — locale key သားပဲ (client.ts က 401 မှာ session ရှင်းတာမို့
+      // 401 နဲ့ 409 ကို status နဲ့ပဲ ခွဲဖတ်တယ်)။
+      let message = t("auth.login.failed");
+      if (err instanceof ApiError) {
+        message =
+          err.status === 409
+            ? t("auth.login.staffAccount")
+            : err.message;
+      }
       setError(message);
     } finally {
       setIsLoading(false);

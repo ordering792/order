@@ -24,6 +24,9 @@ describe("admin api endpoints", () => {
 
       await api.login({ phone: "09111", password: "secret" });
 
+      // Panel login သွားတာ /auth/staff-login — backend က ဒီ route မှာ
+      // role=admin/owner သားပဲ token ထုတ်တယ် (customer app က /auth/login)။
+      expect(mockFetch.mock.calls[0][0]).toContain("/auth/staff-login");
       const body = JSON.parse(
         (mockFetch.mock.calls[0][1] as RequestInit).body as string
       );

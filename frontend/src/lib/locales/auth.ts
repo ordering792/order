@@ -11,6 +11,8 @@ export const authDict: Dict = {
     "auth.guest.signInToView": "Please sign in to view this content",
     "auth.login.signingIn": "Signing in...",
     "auth.login.failed": "Login failed. Please try again.",
+    "auth.login.staffAccount":
+      "This is a staff account. Please sign in from the admin panel.",
     "auth.register.usernamePlaceholder": "Username",
     "auth.register.invitationPlaceholder": "Invitation Code",
     "auth.register.creating": "Creating account...",
@@ -58,6 +60,8 @@ export const authDict: Dict = {
     "auth.guest.signInToView": "Inicia sesión para ver este contenido",
     "auth.login.signingIn": "Iniciando sesión...",
     "auth.login.failed": "Error al iniciar sesión. Inténtalo de nuevo.",
+    "auth.login.staffAccount":
+      "Esta es una cuenta del personal. Inicia sesión en el panel de administración.",
     "auth.register.usernamePlaceholder": "Nombre de usuario",
     "auth.register.invitationPlaceholder": "Código de invitación",
     "auth.register.creating": "Creando cuenta...",
@@ -105,6 +109,8 @@ export const authDict: Dict = {
     "auth.guest.signInToView": "Entre para ver este conteúdo",
     "auth.login.signingIn": "Entrando...",
     "auth.login.failed": "Falha no login. Tente novamente.",
+    "auth.login.staffAccount":
+      "Esta é uma conta da equipe. Faça entrada no painel de administração.",
     "auth.register.usernamePlaceholder": "Nome de usuário",
     "auth.register.invitationPlaceholder": "Código de convite",
     "auth.register.creating": "Criando conta...",
@@ -152,6 +158,8 @@ export const authDict: Dict = {
     "auth.guest.signInToView": "سجّل الدخول لعرض هذا المحتوى",
     "auth.login.signingIn": "جارٍ تسجيل الدخول...",
     "auth.login.failed": "فشل تسجيل الدخول. يرجى المحاولة مرة أخرى.",
+    "auth.login.staffAccount":
+      "هذا حساب موظف. يرجى تسجيل الدخول من لوحة الإدارة.",
     "auth.register.usernamePlaceholder": "اسم المستخدم",
     "auth.register.invitationPlaceholder": "رمز الدعوة",
     "auth.register.creating": "جارٍ إنشاء الحساب...",
@@ -199,6 +207,8 @@ export const authDict: Dict = {
     "auth.guest.signInToView": "この内容を表示するにはサインインしてください",
     "auth.login.signingIn": "ログイン中...",
     "auth.login.failed": "ログインに失敗しました。もう一度お試しください。",
+    "auth.login.staffAccount":
+      "これはスタッフ用のアカウントです。管理パネルからサインインしてください。",
     "auth.register.usernamePlaceholder": "ユーザー名",
     "auth.register.invitationPlaceholder": "招待コード",
     "auth.register.creating": "アカウントを作成中...",
@@ -246,6 +256,8 @@ export const authDict: Dict = {
     "auth.guest.signInToView": "กรุณาเข้าสู่ระบบเพื่อดูเนื้อหานี้",
     "auth.login.signingIn": "กำลังเข้าสู่ระบบ...",
     "auth.login.failed": "เข้าสู่ระบบไม่สำเร็จ กรุณาลองอีกครั้ง",
+    "auth.login.staffAccount":
+      "นี่เป็นบัญชีของพนักงาน โปรดเข้าสู่ระบบจากแผงผู้ดูแลระบบ",
     "auth.register.usernamePlaceholder": "ชื่อผู้ใช้",
     "auth.register.invitationPlaceholder": "รหัสเชิญ",
     "auth.register.creating": "กำลังสร้างบัญชี...",
@@ -293,6 +305,8 @@ export const authDict: Dict = {
     "auth.guest.signInToView": "이 콘텐츠를 보려면 로그인하세요",
     "auth.login.signingIn": "로그인 중...",
     "auth.login.failed": "로그인에 실패했습니다. 다시 시도해 주세요.",
+    "auth.login.staffAccount":
+      "이 계정은 관리자용입니다. 관리 패널에서 로그인하세요.",
     "auth.register.usernamePlaceholder": "사용자 이름",
     "auth.register.invitationPlaceholder": "초대 코드",
     "auth.register.creating": "계정 생성 중...",
@@ -340,6 +354,7 @@ export const authDict: Dict = {
     "auth.guest.signInToView": "请登录后查看此内容",
     "auth.login.signingIn": "正在登录...",
     "auth.login.failed": "登录失败，请重试。",
+    "auth.login.staffAccount": "这是员工账号，请从管理后台登录。",
     "auth.register.usernamePlaceholder": "用户名",
     "auth.register.invitationPlaceholder": "邀请码",
     "auth.register.creating": "正在创建账户...",
@@ -387,6 +402,8 @@ export const authDict: Dict = {
     "auth.guest.signInToView": "یہ مواد دیکھنے کے لیے سائن ان کریں",
     "auth.login.signingIn": "سائن ان ہو رہا ہے...",
     "auth.login.failed": "سائن ان ناکام ہو گیا۔ براہ کرم دوبارہ کوشش کریں۔",
+    "auth.login.staffAccount":
+      "یہ اسٹاف اکاؤنٹ ہے۔ براہ کرم ایڈمن پینل سے سائن ان کریں۔",
     "auth.register.usernamePlaceholder": "یوزر نیم",
     "auth.register.invitationPlaceholder": "دعوتی کوڈ",
     "auth.register.creating": "اکاؤنٹ بنایا جا رہا ہے...",
