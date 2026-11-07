@@ -1,11 +1,37 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Crown, Plus } from "lucide-react";
 import { api, ApiAdminUser } from "@/lib/api";
 import { money } from "@/lib/money";
 import { useT } from "@/lib/i18n";
+import PasswordResetModal from "../components/PasswordResetModal";
 import WalletEditor from "../components/WalletEditor";
+
+const PLACEHOLDER = "—";
+
+// ဇယား ကော်လံရေ ၁၁ ခု (name, phone, invite, wallet, amount, password, IP/device,
+// status, last login, note, actions) — loading/empty row ရဲ့ colSpan အတွက်။
+const COLUMN_COUNT = 11;
+
+function dateTime(value?: string | null) {
+  if (!value) return PLACEHOLDER;
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return PLACEHOLDER;
+
+  return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  })}`;
+}
+
+function fullDateTime(value?: string | null) {
+  if (!value) return undefined;
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date.toLocaleString();
+}
 
 export default function AdminOwnersPage() {
   const t = useT();
@@ -22,6 +48,13 @@ export default function AdminOwnersPage() {
     password: string;
   } | null>(null);
   const [savingWalletId, setSavingWalletId] = useState<string | null>(null);
+  const [resetTarget, setResetTarget] = useState<ApiAdminUser | null>(null);
+  const [noteEdit, setNoteEdit] = useState<{ id: string; value: string } | null>(
+    null,
+  );
+  const [savingNoteId, setSavingNoteId] = useState<string | null>(null);
+  // Enter နဲ့ blur နှစ်ခုလုံးက save ကိုခေါ်လို့ တစ်ခါပဲ PATCH သွားအောင် guard။
+  const savingNoteRef = useRef<string | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -35,6 +68,78 @@ export default function AdminOwnersPage() {
   }, []);
 
   useEffect(load, [load]);
+
+  const run = async (action: () => Promise<unknown>, successMessage: string) => {
+    setError("");
+    setNotice("");
+
+    try {
+      await action();
+      setNotice(successMessage);
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed");
+    }
+  };
+
+  // Role လျှော့ခြင်းနဲ့ Burn အလံ — နှစ်ခုလုံး PATCH /admin/users/:id ကပဲ (admin သာ)။
+  // Owner row တွေ Users page ထဲက ပျောက်ပြီးလို့ ဒီဇယားက တစ်ခုတည်းနေရာ။
+  const update = (
+    id: string,
+    body: { role?: ApiAdminUser["role"]; status?: ApiAdminUser["status"] },
+  ) => run(() => api.adminUpdateUser(id, body), t("admin.saved"));
+
+  // Owner password reset ကို backend က ကြိုခွင့်ပြ်ပြီး (`adminOrOwner`, target
+  // role=admin ဆိုပဲ 403) — tokenVersion တက်လို့ owner panel session ထွက်သွားမယ်။
+  const resetPassword = (target: ApiAdminUser, password: string) =>
+    run(
+      () => api.adminResetUserPassword(target._id, password),
+      t("admin.users.passwordReset", { name: target.name }),
+    );
+
+  // run() ကို မသုံးဘူး — ချွန့်ထွက်ရင် ရိုက်ထားတဲ့ စာသားကို cell ထဲ ပြန်ထားချင်လို့။
+  const saveNote = async (id: string, raw: string) => {
+    if (savingNoteRef.current === id) return;
+
+    const value = raw.trim();
+    const current = owners.find((o) => o._id === id)?.adminNote?.trim() ?? "";
+
+    if (value === current) {
+      setNoteEdit(null);
+      return;
+    }
+
+    savingNoteRef.current = id;
+    setSavingNoteId(id);
+
+    try {
+      await api.adminUpdateUser(id, { adminNote: value || null });
+      setError("");
+      setNotice(t("admin.saved"));
+      setNoteEdit(null);
+      load();
+    } catch (err) {
+      setNoteEdit({ id, value });
+      setError(err instanceof Error ? err.message : "Failed");
+    } finally {
+      savingNoteRef.current = null;
+      setSavingNoteId(null);
+    }
+  };
+
+  // Online/Offline က backend က lastSeenAt ကနေ တွက်ပေးတဲ့ `online` ဖြစ်တယ်။
+  // `status` field ကို Burn/Un-burn အလံအဖြစ်ပဲ သုံးတော့မယ်။
+  const statusLabel = (owner: ApiAdminUser) =>
+    owner.status === "burned"
+      ? t("admin.status.burned")
+      : owner.online
+        ? t("admin.status.online")
+        : t("admin.status.offline");
+
+  const statusTitle = (owner: ApiAdminUser) =>
+    owner.status === "burned" || !owner.lastSeenAt
+      ? undefined
+      : t("admin.status.lastSeen", { time: dateTime(owner.lastSeenAt) });
 
   const create = async () => {
     setError("");
@@ -200,7 +305,7 @@ export default function AdminOwnersPage() {
       )}
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full min-w-[640px] text-left text-sm">
+        <table className="w-full min-w-[1250px] text-left text-sm">
           <thead className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3">{t("admin.field.name")}</th>
@@ -208,20 +313,30 @@ export default function AdminOwnersPage() {
               <th className="px-4 py-3">{t("admin.field.inviteCode")}</th>
               <th className="px-4 py-3">{t("admin.owners.wallet")}</th>
               <th className="px-4 py-3">{t("admin.field.amount")}</th>
-              <th className="px-4 py-3">Actions</th>
-              
+              <th className="px-4 py-3">{t("admin.field.password")}</th>
+              <th className="px-4 py-3">{t("admin.field.ipDevice")}</th>
+              <th className="px-4 py-3">{t("admin.field.status")}</th>
+              <th className="px-4 py-3">{t("admin.field.lastLogin")}</th>
+              <th className="px-4 py-3">{t("admin.field.note")}</th>
+              <th className="px-4 py-3">{t("admin.field.actions")}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {loading ? (
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-slate-400">
+                <td
+                  colSpan={COLUMN_COUNT}
+                  className="px-4 py-6 text-center text-slate-400"
+                >
                   {t("admin.loading")}
                 </td>
               </tr>
             ) : owners.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-slate-400">
+                <td
+                  colSpan={COLUMN_COUNT}
+                  className="px-4 py-6 text-center text-slate-400"
+                >
                   {t("admin.empty")}
                 </td>
               </tr>
@@ -254,12 +369,117 @@ export default function AdminOwnersPage() {
                   </td>
                   <td className="px-4 py-3 text-slate-700">${money(owner.balance)}</td>
                   <td className="px-4 py-3">
-                    <button
-                      onClick={() => openWallet(owner)}
-                      className="rounded-md border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50"
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs tracking-widest text-slate-400">
+                        ••••••
+                      </span>
+                      <button
+                        onClick={() => setResetTarget(owner)}
+                        className="rounded-md border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50"
+                      >
+                        {t("admin.users.reset")}
+                      </button>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-slate-600">
+                    <span className="block font-mono">
+                      {owner.ipAddress ?? PLACEHOLDER}
+                    </span>
+                    <span className="block text-slate-400">
+                      {owner.lastDevice ?? PLACEHOLDER}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span
+                      title={statusTitle(owner)}
+                      className={`rounded-md px-2 py-1 text-xs font-semibold ${
+                        owner.status === "burned"
+                          ? "bg-red-50 text-red-600"
+                          : owner.online
+                            ? "bg-emerald-50 text-emerald-600"
+                            : "bg-slate-100 text-slate-500"
+                      }`}
                     >
-                      {t("admin.owners.wallet")}
-                    </button>
+                      {statusLabel(owner)}
+                    </span>
+                  </td>
+                  <td
+                    className="px-4 py-3 text-xs text-slate-500"
+                    title={fullDateTime(owner.lastLoginAt)}
+                  >
+                    {dateTime(owner.lastLoginAt)}
+                  </td>
+                  <td className="px-4 py-3 align-middle">
+                    {noteEdit?.id === owner._id ? (
+                      <input
+                        data-testid="owner-note-input"
+                        autoFocus
+                        value={noteEdit.value}
+                        maxLength={500}
+                        disabled={savingNoteId === owner._id}
+                        placeholder={t("admin.users.notePlaceholder")}
+                        onChange={(e) =>
+                          setNoteEdit({ id: owner._id, value: e.target.value })
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.currentTarget.blur();
+                          } else if (e.key === "Escape") {
+                            setNoteEdit(null);
+                          }
+                        }}
+                        onBlur={(e) => void saveNote(owner._id, e.target.value)}
+                        className="w-[190px] rounded-md border border-[#ff6600] bg-white px-2 py-1 text-xs text-slate-700 outline-none"
+                      />
+                    ) : (
+                      <button
+                        onClick={() =>
+                          setNoteEdit({
+                            id: owner._id,
+                            value: owner.adminNote ?? "",
+                          })
+                        }
+                        title={owner.adminNote ?? undefined}
+                        className={`w-[190px] truncate rounded-md border px-2 py-1 text-left text-xs transition ${
+                          owner.adminNote
+                            ? "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                            : "border-dashed border-slate-200 text-slate-400 hover:bg-slate-50"
+                        }`}
+                      >
+                        {owner.adminNote || t("admin.users.notePlaceholder")}
+                      </button>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-1.5">
+                      <button
+                        onClick={() => openWallet(owner)}
+                        className="rounded-md border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50"
+                      >
+                        {t("admin.owners.wallet")}
+                      </button>
+                      <button
+                        onClick={() => update(owner._id, { role: "user" })}
+                        className="rounded-md border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50"
+                      >
+                        {t("admin.users.toUser")}
+                      </button>
+                      {owner.status === "burned" ? (
+                        <button
+                          onClick={() => update(owner._id, { status: "offline" })}
+                          className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-600 transition hover:bg-emerald-100"
+                        >
+                          {t("admin.action.accept")}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => update(owner._id, { status: "burned" })}
+                          className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-600 transition hover:bg-red-100"
+                        >
+                          {t("admin.status.burned")}
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))
@@ -267,6 +487,14 @@ export default function AdminOwnersPage() {
           </tbody>
         </table>
       </div>
+
+      {resetTarget && (
+        <PasswordResetModal
+          userName={resetTarget.name}
+          onClose={() => setResetTarget(null)}
+          onSubmit={(password) => resetPassword(resetTarget, password)}
+        />
+      )}
     </div>
   );
 }

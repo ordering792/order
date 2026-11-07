@@ -17,6 +17,8 @@ const {
   isTronAddress,
 } = require("../utils/walletAddress");
 const { WALLET_NOTES } = require("../constants/walletNotes");
+// Users နဲ့ Owners ဇယားနှစ်ခုလုံး ဒီ rule တစ်ခုတည်းကို သုံးလို့ Online/Burned ပြပုံ မကွာ။
+const { ONLINE_WINDOW_MS, isOnline } = require("../services/presenceService");
 const { emitToAdmins, emitToUser } = require("../socket");
 const {
   ownerUserIds,
@@ -37,21 +39,13 @@ const orderBoardSchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(24),
 });
 
-// Presence window — Users list မှာ Online လို့ ပြဖို့ lastSeenAt နှိုင်းယှဉ်တဲ့ အချိန်။
-// auth middleware ရဲ့ ၆၀ စက္ကန့် throttle ထက် ကျယ်ရမယ် (မဟုတ်ရင် window အစောပိုင်း
-// မှာပဲ offline ပြသွားမယ်)။
-const ONLINE_WINDOW_MS = 5 * 60_000;
-
-function isOnline(user) {
-  if (user.status === "burned" || !user.lastSeenAt) return false;
-
-  return Date.now() - new Date(user.lastSeenAt).getTime() <= ONLINE_WINDOW_MS;
-}
-
 const listUsersSchema = z.object({
   search: z.string().max(100).optional(),
   role: z.enum(["user", "owner", "admin"]).optional(),
   status: z.enum(["online", "offline", "burned"]).optional(),
+  // Users page က owner rows တွေကို Owners page ဆီ လွှဲပြီး (2026-11-07 ruling)။
+  // wallet page နဲ့ announcements picker တွေက ဒီ param ကို မပို့ဘူး — owner ဆက်မြင်။
+  exclude: z.enum(["owner"]).optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
@@ -100,7 +94,7 @@ exports.listUsers = asyncHandler(async (req, res) => {
     });
   }
 
-  const { search, role, status, page, limit } = parsed.data;
+  const { search, role, status, exclude, page, limit } = parsed.data;
   const onlineAfter = new Date(Date.now() - ONLINE_WINDOW_MS);
 
   // scope = role + search + owner downline သက်သက်။ Count tile တွေက ဒီ subset
@@ -119,6 +113,12 @@ exports.listUsers = asyncHandler(async (req, res) => {
   if (search) {
     const rx = new RegExp(escapeRegExp(search), "i");
     and.push({ $or: [{ name: rx }, { phone: rx }, { invitationCode: rx }] });
+  }
+
+  // $and ထဲပဲ ထည့်တယ် — scope (count aggregate) နဲ့ filter (rows) နှစ်ခုလုံး
+  // ဒီ array ကို သုံးလို့ tile အရေအတွက်နဲ့ ဇယား rows အမြဲ တစ်ထပိုင်းနေမယ်။
+  if (exclude === "owner") {
+    and.push({ role: { $ne: "owner" } });
   }
 
   if (and.length) scope.$and = and;

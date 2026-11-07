@@ -131,6 +131,79 @@ describe("Role system: Admin creates owners", () => {
     expect(res.body.owners[0].ownerInviteCode).toBe("OWN1CODE");
   });
 
+  it("owners list carries the note, presence and device the panel edits", async () => {
+    const admin = await createUser("admin");
+    const seen = new Date();
+    const loggedIn = new Date("2026-11-06T08:30:00.000Z");
+
+    await createUser("owner", {
+      adminNote: "payout verified",
+      ipAddress: "203.0.113.9",
+      lastLoginAt: loggedIn,
+      lastSeenAt: seen,
+      lastUserAgent:
+        "Mozilla/5.0 (Linux; Android 13) Chrome/120.0.0.0 Mobile Safari/537.36",
+    });
+    await createUser("owner", { name: "quiet owner", lastSeenAt: null });
+
+    const res = await request(app)
+      .get("/api/auth/owners")
+      .set("Authorization", `Bearer ${makeToken(admin)}`);
+
+    expect(res.status).toBe(200);
+
+    const stamped = res.body.owners.find((o) => o.adminNote);
+    expect(stamped.ipAddress).toBe("203.0.113.9");
+    expect(stamped.lastDevice).toBe("Chrome · Android");
+    expect(stamped.online).toBe(true);
+    expect(new Date(stamped.lastLoginAt).getTime()).toBe(loggedIn.getTime());
+
+    // Presence ကို store မလုပ်ဘူး — lastSeenAt မပါတဲ့ owner က offline။
+    const quiet = res.body.owners.find((o) => o.name === "quiet owner");
+    expect(quiet.online).toBe(false);
+    expect(quiet.lastDevice).toBeNull();
+    expect(quiet.adminNote).toBeNull();
+  });
+
+  it("burned owners are reported offline, like the users list", async () => {
+    const admin = await createUser("admin");
+    await createUser("owner", { status: "burned", lastSeenAt: new Date() });
+
+    const res = await request(app)
+      .get("/api/auth/owners")
+      .set("Authorization", `Bearer ${makeToken(admin)}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.owners[0].online).toBe(false);
+    expect(res.body.owners[0].status).toBe("burned");
+  });
+
+  it("hides the owners list, and its notes, from non-admins", async () => {
+    const owner = await createUser("owner", { adminNote: "private" });
+    const user = await createUser("user");
+
+    for (const actor of [owner, user]) {
+      const res = await request(app)
+        .get("/api/auth/owners")
+        .set("Authorization", `Bearer ${makeToken(actor)}`);
+
+      expect(res.status).toBe(403);
+    }
+  });
+
+  it("keeps balance out of the owners list on purpose", async () => {
+    const admin = await createUser("admin");
+    await createUser("owner", { balance: 500 });
+
+    const res = await request(app)
+      .get("/api/auth/owners")
+      .set("Authorization", `Bearer ${makeToken(admin)}`);
+
+    // Owners page ရဲ့ Amount ကော်လံက $— အဖြစ် သေချာထားပြီး — balance ပါရင်
+    // ဒီ test ဖောက်ပြန်, မပါရင် owner ဆီ ကံတရား ငွေ leakage မရှိ။
+    expect(res.body.owners[0].balance).toBeUndefined();
+  });
+
   it("rejects duplicate phone when creating owner", async () => {
     const admin = await createUser("admin");
     await createUser("user", { phone: "09555555555" });

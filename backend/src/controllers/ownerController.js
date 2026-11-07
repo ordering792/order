@@ -4,6 +4,8 @@ const User = require("../models/User");
 const asyncHandler = require("../utils/asyncHandler");
 const { normalizePhone, normalizePassword } = require("../utils/phone");
 const { createUniqueCode } = require("../services/inviteService");
+const { deviceInfo } = require("../utils/deviceInfo");
+const { isOnline } = require("../services/presenceService");
 
 const createOwnerSchema = z.object({
   name: z.string().min(1).max(100),
@@ -59,10 +61,14 @@ exports.createOwner = asyncHandler(async (req, res) => {
   });
 });
 
+// Owners page ရဲ့ ကော်လံတစ်ကြောင်း = owner တစ်ယောက် — admin ထိန်းချုပ်ခလုတ်တွေ
+// (reset, role လျှော့, burn, note) ဒီ payload ပေါ်မှာ ရပ်တည်တယ်။ adminNote က admin
+// ဆီပဲ သွားရမယ် — ဒီ route က adminOnly ဖြစ်လို့ ဒါက နယ်နိမိတ်။ balance က ရည်ရွယ်ချက်
+// ရှိရှိ မတောင်းဘူး (Owners page ရဲ့ Amount က $— အဖြစ် သေချာထားပြီး)။
 exports.listOwners = asyncHandler(async (req, res) => {
   const owners = await User.find({ role: "owner" })
     .select(
-      "name phone invitationCode ownerInviteCode status cryptoAddress cryptoQrUrl createdAt",
+      "name phone invitationCode ownerInviteCode status cryptoAddress cryptoQrUrl createdAt ipAddress lastLoginAt lastSeenAt lastUserAgent +adminNote",
     )
     .sort({ createdAt: -1 })
     .lean();
@@ -73,6 +79,9 @@ exports.listOwners = asyncHandler(async (req, res) => {
       return {
         ...owner,
         userCount,
+        // Users list နဲ့ rule တစ်ခုတည်း — presence store မဟုတ်, lastSeenAt ကနေ တွက်။
+        lastDevice: deviceInfo(owner.lastUserAgent),
+        online: isOnline(owner),
       };
     }),
   );

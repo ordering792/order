@@ -187,6 +187,103 @@ describe("Admin & owner endpoints", () => {
       expect(res.body.users).toHaveLength(1);
       expect(res.body.users[0]._id).toBe(owner._id.toString());
     });
+
+    describe("exclude=owner (Users page shows customers only)", () => {
+      it("drops owner rows and keeps the admin row", async () => {
+        const admin = await createUser("admin");
+        const first = await createUser("user");
+        const second = await createUser("user");
+        const owner = await createUser("owner");
+
+        const res = await request(app)
+          .get("/api/admin/users?exclude=owner")
+          .set("Authorization", `Bearer ${makeToken(admin)}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.users.map((u) => u._id).sort()).toEqual(
+          [first._id.toString(), second._id.toString(), admin._id.toString()].sort(),
+        );
+        expect(res.body.users.map((u) => u._id)).not.toContain(
+          owner._id.toString(),
+        );
+        expect(res.body.total).toBe(3);
+      });
+
+      it("counts the tiles without owner rows", async () => {
+        const admin = await createUser("admin");
+        await createUser("user");
+        await createUser("owner", { status: "burned" });
+
+        const withParam = await request(app)
+          .get("/api/admin/users?exclude=owner")
+          .set("Authorization", `Bearer ${makeToken(admin)}`);
+
+        expect(withParam.body.counts).toMatchObject({ all: 2, burned: 0 });
+
+        // Param မပို့ရင် owner က tile ထဲ ဆက်ပါနေမယ် — wallet page နဲ့
+        // announcements picker တွေ ဒီအတိုင်း မျှော်လင့်ထားတယ်။
+        const withoutParam = await request(app)
+          .get("/api/admin/users")
+          .set("Authorization", `Bearer ${makeToken(admin)}`);
+
+        expect(withoutParam.body.counts).toMatchObject({ all: 3, burned: 1 });
+      });
+
+      it("keeps the exclusion while a status filter narrows the rows", async () => {
+        const admin = await createUser("admin");
+        const burnedUser = await createUser("user", { status: "burned" });
+        const burnedOwner = await createUser("owner", { status: "burned" });
+
+        const res = await request(app)
+          .get("/api/admin/users?exclude=owner&status=burned")
+          .set("Authorization", `Bearer ${makeToken(admin)}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.users.map((u) => u._id)).toEqual([
+          burnedUser._id.toString(),
+        ]);
+        expect(res.body.users.map((u) => u._id)).not.toContain(
+          burnedOwner._id.toString(),
+        );
+      });
+
+      it("search finds an owner while the caller leaves the param out", async () => {
+        const admin = await createUser("admin");
+        const owner = await createUser("owner", { phone: "09123459876" });
+
+        // Owner ရဲ့ read-only /wallet card က ဒီလမ်းကနေ သူ့ row ကို ရှာတယ် —
+        // exclude မပါရင် owner ဆက်ပေါ်နေရမယ်။
+        const res = await request(app)
+          .get("/api/admin/users?search=09123459876")
+          .set("Authorization", `Bearer ${makeToken(admin)}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.users[0]._id).toBe(owner._id.toString());
+      });
+
+      it("an owner actor keeps his downline and loses only his own row", async () => {
+        const owner = await createUser("owner");
+        const mine = await createUser("user", { ownerId: owner._id });
+        await createUser("user");
+
+        const res = await request(app)
+          .get("/api/admin/users?exclude=owner")
+          .set("Authorization", `Bearer ${makeToken(owner)}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.users.map((u) => u._id)).toEqual([mine._id.toString()]);
+      });
+
+      it("refuses an exclude value the panel never sends", async () => {
+        const admin = await createUser("admin");
+
+        const res = await request(app)
+          .get("/api/admin/users?exclude=user")
+          .set("Authorization", `Bearer ${makeToken(admin)}`);
+
+        expect(res.status).toBe(400);
+      });
+    });
   });
 
   describe("Presence (lastSeenAt)", () => {

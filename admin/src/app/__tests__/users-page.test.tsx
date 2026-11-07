@@ -103,6 +103,23 @@ describe("Admin users page", () => {
     expect(screen.getByText("Actions")).toBeInTheDocument();
   });
 
+  it("asks the backend for customer rows, never owner rows", async () => {
+    await renderPage();
+
+    // Owner rows တွေ Owners page ထဲ ပြောင်းပြီး — ဇယားက ဒီ param ကို မေးတယ်။
+    expect(api.adminListUsers).toHaveBeenCalledWith(
+      expect.objectContaining({ exclude: "owner" }),
+    );
+  });
+
+  it("drops the owner choice from the role filter", async () => {
+    await renderPage();
+
+    expect(await screen.findByRole("option", { name: "User" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Admin" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Owner" })).toBeNull();
+  });
+
   it("labels the column by last login, not by join date", async () => {
     await renderPage();
 

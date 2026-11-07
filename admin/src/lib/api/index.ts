@@ -146,6 +146,7 @@ export const api = {
     search?: string;
     role?: string;
     status?: string;
+    exclude?: "owner";
     page?: number;
     limit?: number;
   }) => {
@@ -153,6 +154,7 @@ export const api = {
     if (params?.search) query.set("search", params.search);
     if (params?.role) query.set("role", params.role);
     if (params?.status) query.set("status", params.status);
+    if (params?.exclude) query.set("exclude", params.exclude);
     if (params?.page) query.set("page", String(params.page));
     if (params?.limit) query.set("limit", String(params.limit));
     const qs = query.toString();

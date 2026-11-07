@@ -96,6 +96,10 @@ export default function AdminUsersPage() {
         search: search.trim() || undefined,
         role: role || undefined,
         status: status || undefined,
+        // Owner rows တွေ Owners page ထဲ ပြောင်းပြီး (2026-11-07 ruling) — ဒီဇယားက
+        // ဖောက်သည် (+ panel admin row) အတွက်ပဲ။ Backend က scope ထဲ ဖြတ်လို့
+        // tile ရေတွက်နဲ့ rows တစ်ထပိုင်းတယ်၊ pagination လည်း မလွဲ။
+        exclude: "owner",
         page,
         limit: 25,
       })
@@ -258,7 +262,6 @@ export default function AdminUsersPage() {
         >
           <option value="">{t("admin.field.role")}: —</option>
           <option value="user">{t("admin.role.user")}</option>
-          <option value="owner">{t("admin.role.owner")}</option>
           <option value="admin">{t("admin.role.admin")}</option>
         </select>
 
