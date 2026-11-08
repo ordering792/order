@@ -10,8 +10,15 @@ router.get("/users", auth, adminOrOwner, controller.listUsers);
 // Order plan card board — user အားလုံး (role=user) + active plan။
 router.get("/order-board", auth, adminOrOwner, controller.orderBoard);
 
-// Role / status ပြောင်းခြင်းကို admin သာ လုပ်ခွင့်ရှိတယ်။
+// Role / status ပြောင်းခြင်းကို admin သာ လုပ်ခွင့်ရှိတယ်။ Burn ကိုတော့ အောက်က
+// လမ်းခွဲနဲ့ owner ဆီ ပွင့်တယ် — updateUser က body field အားလုံးကို စစ်မဘဲ
+// ရေးတဲ့ပုံစံဆိုလို့ PATCH ကို ဖွင့်လိုက်ရင် role/note/payout address ပါ သွားမယ်။
 router.patch("/users/:id", auth, adminOnly, controller.updateUser);
+
+// Owner က သူ့ downline user (role=user) ကို burn ပိတ်/ဖွင့်လို့ရတယ်
+// (2026-11-08 ruling) — scope check က controller ထဲ၊ UI ခလုတ်ပိတ်တာ အစစ်မဟုတ်။
+router.put("/users/:id/burn", auth, adminOrOwner, controller.setUserBurn);
+router.delete("/users/:id/burn", auth, adminOrOwner, controller.clearUserBurn);
 
 // Password reset ကို admin နဲ့ owner နှစ်ယောက်လုံး လုပ်လို့ရတယ် — owner က သူ့
 // downline user (role=user) တွေကိုပဲ (controller မှာ စစ်)။ Target က admin ဆို 403။

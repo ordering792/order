@@ -131,10 +131,16 @@ export default function AdminUsersPage() {
     }
   };
 
-  const update = (
-    id: string,
-    body: { role?: ApiAdminUser["role"]; status?: ApiAdminUser["status"] },
-  ) => run(() => api.adminUpdateUser(id, body), t("admin.saved"));
+  const update = (id: string, body: { role?: ApiAdminUser["role"] }) =>
+    run(() => api.adminUpdateUser(id, body), t("admin.saved"));
+
+  // Burn/un-burn ကို လမ်းခွဲပြီး ခေါ်တယ် — PATCH (role/note/payout address) က
+  // adminOnly ဆဲ၊ ဒီ ၂ လမ်းက owner ကိုယ့် downline အတွက် ပွင့် (2026-11-08 ruling)။
+  const setBurn = (id: string, burned: boolean) =>
+    run(
+      () => (burned ? api.adminBurnUser(id) : api.adminUnburnUser(id)),
+      t("admin.saved"),
+    );
 
   // Note က admin သီးသန့် (backend က owner list မှာ field ကို ဖယ်ထားတယ်)။
   // run() ကို မသုံးဘူး — ချွန့်ထွက်ရင် ရိုက်ထားတဲ့ စာသားကို cell ထဲ ပြန်ထားချင်လို့။
@@ -214,7 +220,7 @@ export default function AdminUsersPage() {
         : t("admin.role.user");
 
   // Owner က ကိုယ့် downline user (role=user) ကိုသာ ထိနိုင်တယ် — password reset,
-  // balance adjust, wallet address သုံးခုလုံး backend မှာ ဒီ rule တစ်ခုတည်း
+  // balance adjust, wallet address, burn လေးခုလုံး backend မှာ ဒီ rule တစ်ခုတည်း
   // (isOutsideOwnerScope)။ Admin က admin row ကလွဲရင် အားလုံး ရတယ်။ ဒီ gate က
   // အဆင်ပြေစေတာပဲ — နယ်နိမိတ်အစစ်က backend။
   const canActOn = (target: ApiAdminUser) =>
@@ -234,7 +240,9 @@ export default function AdminUsersPage() {
       ? undefined
       : t("admin.status.lastSeen", { time: dateTime(user.lastSeenAt) });
 
-  const columnCount = isAdmin ? 12 : 10;
+  // NOTE က admin သီးသန့်၊ ACTIONS မှာ owner က burn ခလုတ်တစ်ခုတည်းရတယ်
+  // (role ပြောင်းတာက admin သာ)။
+  const columnCount = isAdmin ? 12 : 11;
 
   return (
     <div className="space-y-4">
@@ -336,7 +344,7 @@ export default function AdminUsersPage() {
               <th className="px-4 py-3">{t("admin.field.role")}</th>
               <th className="px-4 py-3">{t("admin.field.lastLogin")}</th>
               {isAdmin && <th className="px-4 py-3">{t("admin.field.note")}</th>}
-              {isAdmin && <th className="px-4 py-3">{t("admin.field.actions")}</th>}
+              <th className="px-4 py-3">{t("admin.field.actions")}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -491,10 +499,10 @@ export default function AdminUsersPage() {
                       )}
                     </td>
                   )}
-                  {isAdmin && (
-                    <td className="px-4 py-3">
+                  <td className="px-4 py-3">
+                    {(isAdmin || canActOn(u)) && (
                       <div className="flex flex-wrap gap-1.5">
-                        {u.role !== "owner" && (
+                        {isAdmin && u.role !== "owner" && (
                           <button
                             onClick={() => update(u._id, { role: "owner" })}
                             className="rounded-md border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50"
@@ -502,7 +510,7 @@ export default function AdminUsersPage() {
                             {t("admin.users.toOwner")}
                           </button>
                         )}
-                        {u.role !== "user" && (
+                        {isAdmin && u.role !== "user" && (
                           <button
                             onClick={() => update(u._id, { role: "user" })}
                             className="rounded-md border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50"
@@ -512,22 +520,22 @@ export default function AdminUsersPage() {
                         )}
                         {u.status === "burned" ? (
                           <button
-                            onClick={() => update(u._id, { status: "offline" })}
+                            onClick={() => setBurn(u._id, false)}
                             className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-600 transition hover:bg-emerald-100"
                           >
                             {t("admin.action.accept")}
                           </button>
                         ) : (
                           <button
-                            onClick={() => update(u._id, { status: "burned" })}
+                            onClick={() => setBurn(u._id, true)}
                             className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-600 transition hover:bg-red-100"
                           >
                             {t("admin.status.burned")}
                           </button>
                         )}
                       </div>
-                    </td>
-                  )}
+                    )}
+                  </td>
                 </tr>
               ))
             )}

@@ -187,6 +187,21 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  // Burn/un-burn ကို လမ်းခွဲထားတယ် — PATCH က adminOnly ဆဲ (role/note/payout
+  // address ဆီ owner လက်မရောက်အောင်)၊ ဒီလမ်း ၂ ခုက adminOrOwner + controller
+  // ထဲ owner scope။ Backend က status တစ်ခုတည်းပဲ ထိတယ်။
+  adminBurnUser: (id: string) =>
+    request<{ status: ApiAdminUser["status"] }>(
+      `/admin/users/${encodeURIComponent(id)}/burn`,
+      { method: "PUT" },
+    ),
+
+  adminUnburnUser: (id: string) =>
+    request<{ status: ApiAdminUser["status"] }>(
+      `/admin/users/${encodeURIComponent(id)}/burn`,
+      { method: "DELETE" },
+    ),
+
   // User ကိုယ်တိုင်မပြင်နိုင်လို့ admin က အသစ်သတ်မှတ်တာ — အဟောင်း password ကို
   // မမေးဘူး (bcrypt)။ Backend က tokenVersion တက်ဝေ့လို့ device အားလုံး logout ဖြစ်မယ်။
   adminResetUserPassword: (id: string, password: string) =>

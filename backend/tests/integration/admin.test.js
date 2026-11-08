@@ -598,6 +598,160 @@ describe("Admin & owner endpoints", () => {
     });
   });
 
+  // Burn လမ်းခွဲ — owner က သူ့ downline user ကို ပိတ်/ဖွင့်လို့ရတယ်
+  // (2026-11-08 ruling)။ PATCH (role/note/payout) က adminOnly ဆဲ။
+  describe("PUT + DELETE /api/admin/users/:id/burn", () => {
+    it("lets an owner burn his own downline user", async () => {
+      const owner = await createUser("owner");
+      const mine = await createUser("user", { ownerId: owner._id });
+
+      const res = await request(app)
+        .put(`/api/admin/users/${mine._id}/burn`)
+        .set("Authorization", `Bearer ${makeToken(owner)}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("burned");
+
+      const updated = await User.findById(mine._id);
+      expect(updated.status).toBe("burned");
+      expect(updated.role).toBe("user");
+    });
+
+    it("lets an owner release a burned downline user", async () => {
+      const owner = await createUser("owner");
+      const mine = await createUser("user", {
+        ownerId: owner._id,
+        status: "burned",
+      });
+
+      const res = await request(app)
+        .delete(`/api/admin/users/${mine._id}/burn`)
+        .set("Authorization", `Bearer ${makeToken(owner)}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("offline");
+
+      const updated = await User.findById(mine._id);
+      expect(updated.status).toBe("offline");
+    });
+
+    it("lets an admin burn and release any row", async () => {
+      const admin = await createUser("admin");
+      const second = await createUser("admin");
+      const owner = await createUser("owner");
+
+      const asAdmin = (method, id) =>
+        request(app)[method](`/api/admin/users/${id}/burn`).set(
+          "Authorization",
+          `Bearer ${makeToken(admin)}`,
+        );
+
+      expect((await asAdmin("put", owner._id)).status).toBe(200);
+      expect((await User.findById(owner._id)).status).toBe("burned");
+
+      // Admin rows ကိုလည်း burn ခွင့် — ဒါပေမယ့် နောက်ဆုံး admin မဟုတ်ရင်။
+      expect((await asAdmin("put", second._id)).status).toBe(200);
+      expect((await asAdmin("delete", second._id)).status).toBe(200);
+      expect((await User.findById(second._id)).status).toBe("offline");
+    });
+
+    it("refuses an owner burning another owner's user", async () => {
+      const owner = await createUser("owner");
+      const other = await createUser("owner");
+      const theirs = await createUser("user", { ownerId: other._id });
+
+      const res = await request(app)
+        .put(`/api/admin/users/${theirs._id}/burn`)
+        .set("Authorization", `Bearer ${makeToken(owner)}`);
+
+      expect(res.status).toBe(403);
+      expect((await User.findById(theirs._id)).status).not.toBe("burned");
+    });
+
+    it("refuses an owner burning an unlinked user", async () => {
+      const owner = await createUser("owner");
+      const loose = await createUser("user");
+
+      const res = await request(app)
+        .put(`/api/admin/users/${loose._id}/burn`)
+        .set("Authorization", `Bearer ${makeToken(owner)}`);
+
+      expect(res.status).toBe(403);
+    });
+
+    it("refuses an owner burning a panel row or himself", async () => {
+      const owner = await createUser("owner");
+      const admin = await createUser("admin");
+      const otherOwner = await createUser("owner");
+
+      for (const target of [otherOwner, admin, owner]) {
+        const res = await request(app)
+          .put(`/api/admin/users/${target._id}/burn`)
+          .set("Authorization", `Bearer ${makeToken(owner)}`);
+
+        expect(res.status).toBe(403);
+      }
+    });
+
+    it("keeps the last active admin from being burned", async () => {
+      const admin = await createUser("admin");
+
+      const res = await request(app)
+        .put(`/api/admin/users/${admin._id}/burn`)
+        .set("Authorization", `Bearer ${makeToken(admin)}`);
+
+      expect(res.status).toBe(400);
+      expect((await User.findById(admin._id)).status).not.toBe("burned");
+    });
+
+    it("rejects an unknown id and a malformed id", async () => {
+      const owner = await createUser("owner");
+
+      const missing = await request(app)
+        .put(`/api/admin/users/${new mongoose.Types.ObjectId()}/burn`)
+        .set("Authorization", `Bearer ${makeToken(owner)}`);
+      expect(missing.status).toBe(404);
+
+      const malformed = await request(app)
+        .put(`/api/admin/users/not-an-id/burn`)
+        .set("Authorization", `Bearer ${makeToken(owner)}`);
+      expect(malformed.status).toBe(400);
+    });
+
+    it("locks the burned user out of both login surfaces", async () => {
+      const owner = await createUser("owner");
+      const mine = await createUser("user", { ownerId: owner._id });
+
+      await request(app)
+        .put(`/api/admin/users/${mine._id}/burn`)
+        .set("Authorization", `Bearer ${makeToken(owner)}`);
+
+      const res = await request(app)
+        .post("/api/auth/login")
+        .send({ phone: mine.phone, password: "password123" });
+
+      expect(res.status).toBe(403);
+
+      const authed = await request(app)
+        .get("/api/auth/me")
+        .set("Authorization", `Bearer ${makeToken(mine)}`);
+      expect(authed.status).toBe(401);
+    });
+
+    it("leaves the owner PATCH route closed to role changes", async () => {
+      const owner = await createUser("owner");
+      const mine = await createUser("user", { ownerId: owner._id });
+
+      const res = await request(app)
+        .patch(`/api/admin/users/${mine._id}`)
+        .set("Authorization", `Bearer ${makeToken(owner)}`)
+        .send({ status: "burned" });
+
+      expect(res.status).toBe(403);
+      expect((await User.findById(mine._id)).status).not.toBe("burned");
+    });
+  });
+
   describe("Admin note (PATCH + GET /api/admin/users)", () => {
     it("admin stores a note and reads it back in the list", async () => {
       const admin = await createUser("admin");

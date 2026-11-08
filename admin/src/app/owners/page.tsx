@@ -82,8 +82,9 @@ export default function AdminOwnersPage() {
     }
   };
 
-  // Role လျှော့ခြင်းနဲ့ Burn အလံ — နှစ်ခုလုံး PATCH /admin/users/:id ကပဲ (admin သာ)။
-  // Owner row တွေ Users page ထဲက ပျောက်ပြီးလို့ ဒီဇယားက တစ်ခုတည်းနေရာ။
+  // Role လျှော့ခြင်းနဲ့ Burn အလံ — ဒီဇယားမှာ နှစ်ခုလုံး PATCH /admin/users/:id ကပဲ
+  // (admin သာ)။ Owner row တွေ Users page ထဲက ပျောက်ပြီးလို့ ဒီဇယားက တစ်ခုတည်းနေရာ။
+  // Owner ဆီ burn ပွင့်တာက user row တွေအတွက်ပဲ — Users page လမ်းခွဲ ခလုတ်။
   const update = (
     id: string,
     body: { role?: ApiAdminUser["role"]; status?: ApiAdminUser["status"] },

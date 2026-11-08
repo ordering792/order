@@ -370,6 +370,85 @@ exports.updateUser = asyncHandler(async (req, res) => {
   });
 });
 
+// Burn လမ်းခွဲ — owner က သူ့ downline user ကို ပိတ်/ဖွင့်လို့ရအောင် (PATCH ကို
+// ဖွင့်မထားဘူး၊ field-level guard အသစ်လည်း မလို)။ Target ရှာပြီး owner scope ကို
+// တစ်နေရာတည်းမှာ စစ်တယ်။ null ပြန်ရင် res ကို ဒီထဲမှာပဲ ပြီးသွားပြီ။
+async function resolveBurnTarget(req, res) {
+  const { id } = req.params;
+
+  if (!mongoose.isValidObjectId(id)) {
+    res.status(400).json({ message: "Invalid user ID" });
+    return null;
+  }
+
+  const user = await User.findById(id);
+
+  if (!user) {
+    res.status(404).json({ message: "User not found" });
+    return null;
+  }
+
+  if (isOutsideOwnerScope(req.user, user)) {
+    res.status(403).json({
+      message: "Owners can only burn their own users",
+    });
+    return null;
+  }
+
+  return user;
+}
+
+// Burn က status တစ်ခုတည်းကို ထိတယ်။ Token version မတက်ဘူး — auth middleware
+// နဲ့ socket handoff က User.status ကို ပြန်ဖတ်လို့ လက်ကျန် token တွေ 401 ဖြစ်သွား
+// တယ် (PATCH burn လမ်းရဲ့ အပြုအမူအတိုင်း)။
+exports.setUserBurn = asyncHandler(async (req, res) => {
+  const user = await resolveBurnTarget(req, res);
+
+  if (!user) return;
+
+  // Panel account အားလုံး burn လုပ်မိရင် admin panel ကို ဘယ်သူမှ ဝင်လို့မရတော့ဘူး။
+  if (user.role === "admin") {
+    const otherActiveAdmins = await User.countDocuments({
+      role: "admin",
+      status: { $ne: "burned" },
+      _id: { $ne: user._id },
+    });
+
+    if (otherActiveAdmins === 0) {
+      return res.status(400).json({
+        message: "The last active admin cannot be removed or demoted",
+      });
+    }
+  }
+
+  user.status = "burned";
+  await user.save();
+
+  console.log(
+    `[audit] actor=${req.user.role}:${req.user._id} burned user=${user._id}`,
+  );
+
+  res.json({ status: user.status });
+});
+
+// ပြန်ဖွင့်တဲ့အခါ ရေးတဲ့တန်ဖိုးက "offline" — Online/Offline က lastSeenAt ကနေ
+// derived (presenceService) ဆိုပဲ status enum ထဲ ဝင်နေတယ်၊ PATCH မှာ UI သုံးနေကျ
+// တန်ဖိုးပဲ ဒီမှာလည်း ရေးတယ်။
+exports.clearUserBurn = asyncHandler(async (req, res) => {
+  const user = await resolveBurnTarget(req, res);
+
+  if (!user) return;
+
+  user.status = "offline";
+  await user.save();
+
+  console.log(
+    `[audit] actor=${req.user.role}:${req.user._id} unburned user=${user._id}`,
+  );
+
+  res.json({ status: user.status });
+});
+
 // User/owner ရဲ့ withdraw လမ်းပို့ address ကို admin က လက်ဖြင့် ပြင်တာ
 // (phone နဲ့ရိုက်ထည့်မှုမှား, address ပြောင်းခိုင်းမှု)။ Admin အချင်းချင်း
 // ပြင်လို့မရ — panel account address ပျက်ရင် payout အားလုံး ရှုပ်ထွေးသွားမယ်။

@@ -92,6 +92,30 @@ describe("admin api endpoints", () => {
       expect(body.status).toBe("online");
     });
 
+    // Burn ကို PATCH ကနေ လမ်းခွဲထားတယ် — owner ဆီ ပွင့်လို့ PATCH ကို
+    // ဖွင့်မရအောင် (PATCH ထဲ role/note/payout address ပါနေဆဲ)။
+    it("adminBurnUser PUTs the split burn route with no body", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ status: "burned" }));
+
+      await api.adminBurnUser("u1");
+
+      const call = mockFetch.mock.calls[0];
+      expect(call[0]).toBe("http://localhost:5000/api/admin/users/u1/burn");
+      const init = call[1] as RequestInit;
+      expect(init.method).toBe("PUT");
+      expect(init.body).toBeUndefined();
+    });
+
+    it("adminUnburnUser DELETEs the split burn route", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ status: "offline" }));
+
+      await api.adminUnburnUser("u1");
+
+      const call = mockFetch.mock.calls[0];
+      expect(call[0]).toBe("http://localhost:5000/api/admin/users/u1/burn");
+      expect((call[1] as RequestInit).method).toBe("DELETE");
+    });
+
     it("adminUpdateUserWalletAddress PUTs the address", async () => {
       mockFetch.mockResolvedValueOnce(
         jsonResponse({ message: "Wallet address updated", walletAddress: "Tabc" })

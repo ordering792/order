@@ -19,6 +19,8 @@ jest.mock("@/lib/api", () => {
       ...actual.api,
       adminListUsers: jest.fn(),
       adminUpdateUser: jest.fn(),
+      adminBurnUser: jest.fn(),
+      adminUnburnUser: jest.fn(),
       adminResetUserPassword: jest.fn(),
       adminAdjustBalance: jest.fn(),
       adminUpdateUserWalletAddress: jest.fn(),
@@ -82,6 +84,8 @@ beforeEach(() => {
   globalThis.__adminUser = null;
   listUsers([row()]);
   (api.adminUpdateUser as jest.Mock).mockReset().mockResolvedValue({});
+  (api.adminBurnUser as jest.Mock).mockReset().mockResolvedValue({});
+  (api.adminUnburnUser as jest.Mock).mockReset().mockResolvedValue({});
   (api.adminResetUserPassword as jest.Mock).mockReset().mockResolvedValue({});
   (api.adminAdjustBalance as jest.Mock)
     .mockReset()
@@ -286,9 +290,47 @@ describe("Admin users page", () => {
     expect(screen.getByRole("button", { name: "+" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "−" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Change" })).toBeInTheDocument();
-    // role/status/burn ပြောင်းတာ (PATCH /users/:id) နဲ့ note က admin သာ။
-    expect(screen.queryByText("Actions")).toBeNull();
+    // Burn ကို လမ်းခွဲပြီး owner ဆီ ပွင့်တယ် (2026-11-08 ruling)။ Role ပြောင်းတာ
+    // (PATCH /users/:id) နဲ့ note က admin ဆဲ။
+    expect(screen.getByRole("button", { name: "Burned" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "→ Owner" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "→ User" })).toBeNull();
     expect(screen.queryByText("Note")).toBeNull();
+  });
+
+  it("lets an owner burn his own user through the split route", async () => {
+    const user = userEvent.setup();
+    await renderPage("owner");
+
+    await user.click(screen.getByRole("button", { name: "Burned" }));
+
+    expect(await screen.findByText("Saved")).toBeInTheDocument();
+    expect(api.adminBurnUser).toHaveBeenCalledWith(BASE_ROW._id);
+    expect(api.adminUpdateUser).not.toHaveBeenCalled();
+  });
+
+  it("lets an owner release a burned downline user", async () => {
+    const user = userEvent.setup();
+    listUsers([row({ status: "burned" })]);
+    await renderPage("owner");
+
+    await user.click(screen.getByRole("button", { name: "Accept" }));
+
+    expect(api.adminUnburnUser).toHaveBeenCalledWith(BASE_ROW._id);
+  });
+
+  it("burns a user through the split route for admins too", async () => {
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(screen.getByRole("button", { name: "Burned" }));
+
+    await waitFor(() => expect(api.adminBurnUser).toHaveBeenCalledWith(BASE_ROW._id));
+    // Owner မြှင့်တာ ဆဲ PATCH ကိုသုံးတယ် — နှစ်လမ်း ရှုထောင့်ခွဲ။
+    await user.click(screen.getByRole("button", { name: "→ Owner" }));
+    expect(api.adminUpdateUser).toHaveBeenCalledWith(BASE_ROW._id, {
+      role: "owner",
+    });
   });
 
   it("hides every action from an owner on a row that is not his user", async () => {
@@ -299,6 +341,12 @@ describe("Admin users page", () => {
     expect(screen.queryByRole("button", { name: "+" })).toBeNull();
     expect(screen.queryByRole("button", { name: "−" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Change" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Burned" })).toBeNull();
+
+    // ACTIONS cell ကို အမြဲ ထားတယ် — ခလုတ်မပါတဲ့ row မှာ td တစ်ခု ပျောက်ရင်
+    // header နဲ့ row ရဲ့ column အရေအတွက် လွဲပြီး ဇယား စောင်းသွားမယ်။
+    const tr = (await screen.findByText("Panel Owner")).closest("tr");
+    expect(within(tr as HTMLTableRowElement).getAllByRole("cell")).toHaveLength(11);
   });
 
   it("hides the reset control from an owner on his own row", async () => {
