@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api, ApiAdminStats } from "@/lib/api";
 import { useT } from "@/lib/i18n";
+import { money } from "@/lib/money";
 
 function StatCard({
   label,
@@ -67,7 +68,7 @@ export default function AdminDashboardPage() {
             />
             <StatCard
               label={t("admin.stats.volume")}
-              value={String(stats.acceptedVolume)}
+              value={`$${money(stats.acceptedVolume)}`}
               tone="emerald"
             />
           </div>

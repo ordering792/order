@@ -142,7 +142,7 @@ export interface ApiAdminStats {
   totalProducts: number;
   pendingDeposits: number;
   pendingWithdraws: number;
-  acceptedVolume: string | number;
+  acceptedVolume: MoneyValue;
   totalPlans: number;
   generatedPlans: number;
   completedPlans: number;
