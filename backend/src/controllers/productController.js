@@ -5,12 +5,12 @@ const asyncHandler = require("../utils/asyncHandler");
 const { CATALOG_LIMITS } = require("../constants/catalogLimits");
 const { toCents, decimal } = require("../utils/money");
 
-const MAX_PRICE_CENTS = 500000n; // 5000.00
+const MAX_PRICE_CENTS = 50000000n; // 500000.00
 
 function parseMoney(value) {
   const cents = toCents(value);
   if (cents < 1n || cents > MAX_PRICE_CENTS) {
-    throw new Error("Price must be between 0.01 and 5000.00");
+    throw new Error("Price must be between 0.01 and 500000.00");
   }
   return cents;
 }
@@ -69,7 +69,7 @@ exports.create = asyncHandler(async (req, res) => {
   } catch {
     return res
       .status(400)
-      .json({ message: "Price must be between 0.01 and 5000.00" });
+      .json({ message: "Price must be between 0.01 and 500000.00" });
   }
 
   let commissionCents = null;
@@ -125,7 +125,7 @@ exports.bulkCreate = asyncHandler(async (req, res) => {
       priceCents = parseMoney(item.price);
     } catch {
       return res.status(400).json({
-        message: `Price must be between 0.01 and 5000.00 (${item.name})`,
+        message: `Price must be between 0.01 and 500000.00 (${item.name})`,
       });
     }
 
@@ -231,7 +231,7 @@ exports.update = asyncHandler(async (req, res) => {
     } catch {
       return res
         .status(400)
-        .json({ message: "Price must be between 0.01 and 5000.00" });
+        .json({ message: "Price must be between 0.01 and 500000.00" });
     }
     updates.price = decimal(priceCents);
   }

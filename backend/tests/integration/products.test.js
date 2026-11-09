@@ -122,15 +122,26 @@ describe("Product catalog endpoints", () => {
       expect(res.status).toBe(403);
     });
 
-    it("rejects price above 5000", async () => {
+    it("rejects price above 500000", async () => {
       const admin = await createUser("admin");
 
       const res = await request(app)
         .post("/api/products")
         .set("Authorization", `Bearer ${makeToken(admin)}`)
-        .send({ name: "Too pricey", price: "5000.01" });
+        .send({ name: "Too pricey", price: "500000.01" });
 
       expect(res.status).toBe(400);
+    });
+
+    it("accepts price at the 500000 ceiling", async () => {
+      const admin = await createUser("admin");
+
+      const res = await request(app)
+        .post("/api/products")
+        .set("Authorization", `Bearer ${makeToken(admin)}`)
+        .send({ name: "At ceiling", price: "500000.00" });
+
+      expect(res.status).toBe(201);
     });
 
     it("rejects invalid price", async () => {
@@ -286,7 +297,7 @@ describe("Product catalog endpoints", () => {
       const res = await request(app)
         .put(`/api/products/${product._id}`)
         .set("Authorization", `Bearer ${makeToken(admin)}`)
-        .send({ price: "99999.00" });
+        .send({ price: "500001.00" });
 
       expect(res.status).toBe(400);
     });

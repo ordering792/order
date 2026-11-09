@@ -1340,7 +1340,7 @@ describe("Admin & owner endpoints", () => {
         .post("/api/products/bulk")
         .set("Authorization", `Bearer ${makeToken(admin)}`)
         .send({
-          products: [{ name: "Bad", price: "99999.00" }],
+          products: [{ name: "Bad", price: "500001.00" }],
         });
 
       expect(res.status).toBe(400);
