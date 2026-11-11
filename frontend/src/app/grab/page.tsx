@@ -12,6 +12,7 @@ import {
   Trophy,
   Zap,
   AlertCircle,
+  Sparkles,
   Star,
   Home,
   ClipboardList,
@@ -73,7 +74,6 @@ export default function GrabPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeProduct, setActiveProduct] = useState<GrabOrder | null>(null);
   const [needsDeposit, setNeedsDeposit] = useState(false);
-  const [shortBy, setShortBy] = useState("0.00");
   const [rating, setRating] = useState(0);
   const [error, setError] = useState("");
   const [matchStage, setMatchStage] = useState(0);
@@ -167,7 +167,6 @@ export default function GrabPage() {
 
       setActiveProduct(res.order);
       setNeedsDeposit(res.needsDeposit);
-      setShortBy(res.shortBy);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : t("grab.matchFailed"),
@@ -428,13 +427,13 @@ export default function GrabPage() {
               </div>
 
               {isDepositRequired && (
-                <div className="bg-rose-50 border border-rose-200 p-3 rounded-xl text-xs text-rose-600 space-y-1">
-                  <div className="font-bold flex items-center gap-1">
-                    <AlertCircle size={14} />
-                    <span>{t("grab.insufficientBalance")}</span>
+                <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl text-xs text-amber-800 space-y-1">
+                  <div className="font-bold flex items-center gap-1 text-amber-900">
+                    <Sparkles size={14} />
+                    <span>{t("grab.luckyCongratsTitle")}</span>
                   </div>
-                  <p className="text-[11px]">
-                    {t("grab.depositMore", { amount: formatMoney(shortBy) })}
+                  <p className="text-[11px] text-amber-700">
+                    {t("grab.luckyCongratsBody")}
                   </p>
                 </div>
               )}
@@ -472,7 +471,7 @@ export default function GrabPage() {
                 {isDepositRequired ? (
                   <Link
                     href="/deposit"
-                    className="w-1/2 bg-gradient-to-r from-rose-500 to-red-600 text-white py-3 rounded-xl font-bold text-xs shadow-md hover:opacity-95 transition text-center"
+                    className="w-1/2 bg-gradient-to-r from-[#ff782d] to-[#ff5100] text-white py-3 rounded-xl font-bold text-xs shadow-md hover:opacity-95 transition text-center"
                   >
                     {t("grab.depositNow")}
                   </Link>
